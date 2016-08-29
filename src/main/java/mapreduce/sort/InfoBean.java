@@ -1,4 +1,4 @@
-package cn.itcast.hadoop.mr.sort;
+package mapreduce.sort;
 
 import java.io.DataInput;
 import java.io.DataOutput;

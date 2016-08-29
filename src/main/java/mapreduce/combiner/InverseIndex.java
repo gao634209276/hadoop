@@ -1,4 +1,4 @@
-package cn.itcast.hadoop.mr.ii;
+package mapreduce.combiner;
 
 import java.io.IOException;
 

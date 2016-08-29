@@ -1,4 +1,4 @@
-package com.it18zhang.hadoop;
+package mapreduce.MaxTemperature;
 
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.Text;

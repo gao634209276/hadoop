@@ -1,4 +1,4 @@
-package com.it18zhang.hadoop;
+package mapreduce.MaxTemperature;
 
 import java.io.IOException;
 

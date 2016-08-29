@@ -1,4 +1,4 @@
-package com.it18zhang.hadoop;
+package mapreduce.MaxTemperature;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
