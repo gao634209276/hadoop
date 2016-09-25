@@ -19,16 +19,41 @@
 
 	<property>
 		<name>yarn.resourcemanager.hostname</name>
-		<value>master</value>
+		<value>hadoop</value>
+	</property>
+
+	<property>
+		<name>yarn.resourcemanager.address</name>
+		<value>hadoop:8032</value>
+		</property>
+	<property>
+		<name>yarn.resourcemanager.scheduler.address</name> 
+		<value>hadoop:8030</value>
 	</property>
 	<property>
-		<name>yarn.nodemanager.aux-services</name>
-		<value>mapreduce_shuffle</value>
+		<name>yarn.resourcemanager.resource-tracker.address</name>  
+		<value>hadoop:8031</value>
 	</property>
 	<property>
-		<name>yarn.nodemanager.aux-services.mapreduce.shuffle.class</name>
-		<value>org.apache.hadoop.mapred.ShuffleHandler</value>
+		<name>yarn.resourcemanager.admin.address</name>
+		<value>hadoop:8033</value>
+	</property> 
+	<property>
+		<name>yarn.resourcemanager.webapp.address</name>
+		<value>hadoop:8088</value>
 	</property>
+
+	<property>
+		<name>yarn.log-aggregation-enable</name>
+		<value>true</value>
+	</property>
+	<property>
+		<name>yarn.log-aggregation.retain-seconds</name>
+		<value>604800</value>
+	</property>
+	<!--scheduler-->
+	
+<!--
 	<property>
 	    <name>yarn.resourcemanager.scheduler.class</name>
 	    <value>org.apache.hadoop.yarn.server.resourcemanager.scheduler.fair.FairScheduler</value>
@@ -42,35 +67,64 @@
 		<name>yarn.scheduler.fair.sizebaseweight</name>
 		<value>true</value>
 	</property>
-
+-->
+	
+	<!--nodemanager-->
 	<property>
-		<name>yarn.resourcemanager.address</name>
-		<value>master:8032</value>
-		</property>
-	<property>
-		<name>yarn.resourcemanager.scheduler.address</name> 
-		<value>master:8030</value>
+		<name>yarn.nodemanager.aux-services</name>
+		<value>mapreduce_shuffle</value>
 	</property>
 	<property>
-		<name>yarn.resourcemanager.resource-tracker.address</name>  
-		<value>master:8031</value>
+		<name>yarn.nodemanager.aux-services.mapreduce.shuffle.class</name>
+		<value>org.apache.hadoop.mapred.ShuffleHandler</value>
+	</property>
+	
+	<property>
+		<name>yarn.nodemanager.resource.menory-mb</name>
+		<value>6000</value>
 	</property>
 	<property>
-		<name>yarn.resourcemanager.admin.address</name>
-		<value>master:8033</value>
-	</property> 
-	<property>
-		<name>yarn.resourcemanager.webapp.address</name>
-		<value>master:8088</value>
+		<name>yarn.nodemanager.resource.cpu-vcores</name>
+		<value>4</value>
 	</property>
-
 	<property>
-		<name>yarn.log-aggregation-enable</name>
+		<name>yarn.nodemanager.local-dirs</name>
+		<value>/opt/single/hadoop-2.7.2/data/yarn/nm-local-dir</value>
+	</property>
+	<!--<property>
+		<name>yarn.application.classpath</name>
+		<value>$HADOOP_CONF_DIR,
+		$HADOOP_COMMON_HOME/share/hadoop/common/*,
+		$HADOOP_COMMON_HOME/share/hadoop/common/lib/*,
+		$HADOOP_HDFS_HOME/share/hadoop/hdfs/*,
+		$HADOOP_HDFS_HOME/share/hadoop/hdfs/lib/*,
+		$HADOOP_YARN_HOME/share/hadoop/yarn/*,
+		$HADOOP_YARN_HOME/share/hadoop/yarn/lib/*</value>
+	</property>-->
+	 
+	<!--yarn tez timeline conf set-->
+	<property>
+		<name>yarn.timeline-service.enabled</name>
 		<value>true</value>
 	</property>
 	<property>
-		<name>yarn.log-aggregation.retain-seconds</name>
-		<value>604800</value>
+		<name>yarn.timeline-service.hostname</name>
+		<value>localhost</value>
 	</property>
-
+	<property>
+		<name>yarn.timeline-service.http-cross-origin.enabled</name>
+		<value>true</value>
+	</property>
+	<property>
+		<name>yarn.resourcemanager.system-metrics-publisher.enabled</name>
+		<value>true</value>
+	</property>
+	<property>
+		<name>yarn.timeline-service.webapp.address</name>
+		<value>${yarn.timeline-service.hostname}:8188</value>
+	</property>
+	<property>
+		<name>yarn.timeline-service.webapp.https.address</name>
+		<value>${yarn.timeline-service.hostname}:2191</value>
+	</property>
 </configuration>

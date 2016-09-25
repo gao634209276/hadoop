@@ -1,4 +1,4 @@
-package mapreduce.io;
+package common.io;
 
 import java.io.DataInput;
 import java.io.DataOutput;
