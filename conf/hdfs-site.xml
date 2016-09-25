@@ -37,14 +37,39 @@
 
 	<property>
 		<name>dfs.namenode.name.dir</name>
-		<value>file:/opt/single/hadoop-2.7.2/data/dfs/name</value>
+		<value>file:/opt/modules/hadoop-2.7.2/data-single/dfs/name</value>
 	</property>
 	<property>
 		<name>dfs.datanode.data.dir</name>
-		<value>file:/opt/single/hadoop-2.7.2/data/dfs/data</value>
+		<value>file:/opt/modules/hadoop-2.7.2/data-single/dfs/data</value>
 	</property>
 	<property>
 		<name>dfs.webhdfs.enabled</name>
 		<value>true</value>
 	</property>
+	
+	
+	<property>
+		<name>dfs.namenode.handler.count</name>
+		<value>10</value>
+	</property>
+	<property>
+		<name>dfs.datanode.handler.count</name>
+		<value>10</value>
+	</property>
+	<property>
+		<name>dfs.namenode.handler.count</name>
+		<value>10</value>
+	</property>
+
+
+
+
+
+
+
+
+
+
+
 </configuration>

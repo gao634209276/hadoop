@@ -20,14 +20,14 @@ public class WordCount {
 		job.setMapperClass(WCMapper.class);
 		job.setMapOutputKeyClass(Text.class);
 		job.setMapOutputValueClass(LongWritable.class);
-		FileInputFormat.setInputPaths(job, new Path("hdfs://master:9000/user/hadoop/mr/wc/input/"));
+		FileInputFormat.setInputPaths(job, new Path("hdfs://hadoop:9000/user/hadoop/mr/wc/input/"));
 		
 		
 		job.setReducerClass(WCReducer.class);
 		job.setOutputKeyClass(Text.class);
 		job.setOutputValueClass(LongWritable.class);
 		job.setOutputValueClass(LongWritable.class);
-		FileOutputFormat.setOutputPath(job, new Path("hdfs://master:9000/user/hadoop/mr/wc/output"));
+		FileOutputFormat.setOutputPath(job, new Path("hdfs://hadoop:9000/user/hadoop/mr/wc/output"));
 		
 		job.waitForCompletion(true);
 	}
