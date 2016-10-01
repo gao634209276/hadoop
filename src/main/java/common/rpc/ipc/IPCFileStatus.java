@@ -1,4 +1,4 @@
-package common.rpc.demo;
+package common.rpc.ipc;
 
 import java.io.DataInput;
 import java.io.DataOutput;

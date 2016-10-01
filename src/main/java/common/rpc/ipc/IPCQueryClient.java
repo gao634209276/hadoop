@@ -1,4 +1,4 @@
-package org.hadoopinternal.ipc;
+package common.rpc.ipc;
 
 import java.net.InetSocketAddress;  
 import org.apache.hadoop.conf.Configuration;  

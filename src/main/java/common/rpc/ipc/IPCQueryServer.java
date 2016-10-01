@@ -1,4 +1,4 @@
-package common.rpc.demo;
+package common.rpc.ipc;
 
 
 import org.apache.hadoop.conf.Configuration;

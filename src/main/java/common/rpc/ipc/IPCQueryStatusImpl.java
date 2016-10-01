@@ -1,4 +1,4 @@
-package common.rpc.demo;
+package common.rpc.ipc;
 
 public class IPCQueryStatusImpl implements IPCQueryStatus {
 	public IPCQueryStatusImpl() {
