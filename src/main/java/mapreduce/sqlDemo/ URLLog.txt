@@ -1,0 +1,59 @@
+Hadoop 分析Apache日志记录 URLlog日志分析：
+
+1、GET方式的URL出现的次数
+
+2、PUT方式的URL出现的次数
+
+数据文件
+
+[root@master IMFdatatest]#hadoop dfs -cat /library/URLLog.txt
+DEPRECATED: Use of this script to execute hdfs command is deprecated.
+Instead use the hdfs command for it.
+
+16/02/16 07:23:53 WARN util.NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-Java classes where applicable
+127.0.0.1 - - [03/Jul/2015:23:36:38 +0800] "GET /course/detail/3.htm HTTP/1.0" 200 38435 0.038
+182.131.89.195 - - [03/Jul/2015:23:37:43 +0800] "GET / HTTP/1.0" 301 - 0.000
+127.0.0.1 - - [03/Jul/2015:23:38:27 +0800] "POST /service/notes/addViewTimes_23.htm HTTP/1.0" 200 2 0.003
+127.0.0.1 - - [03/Jul/2015:23:39:03 +0800] "GET /html/notes/20140617/779.html HTTP/1.0" 200 69539 0.046
+127.0.0.1 - - [03/Jul/2015:23:43:00 +0800] "GET /html/notes/20140318/24.html HTTP/1.0" 200 67171 0.049
+127.0.0.1 - - [03/Jul/2015:23:43:59 +0800] "POST /service/notes/addViewTimes_779.htm HTTP/1.0" 200 1 0.003
+127.0.0.1 - - [03/Jul/2015:23:45:51 +0800] "GET / HTTP/1.0" 200 70044 0.060
+127.0.0.1 - - [03/Jul/2015:23:46:17 +0800] "GET /course/list/73.htm HTTP/1.0" 200 12125 0.010
+127.0.0.1 - - [03/Jul/2015:23:46:58 +0800] "GET /html/notes/20140609/542.html HTTP/1.0" 200 94971 0.077
+127.0.0.1 - - [03/Jul/2015:23:48:31 +0800] "POST /service/notes/addViewTimes_24.htm HTTP/1.0" 200 2 0.003
+127.0.0.1 - - [03/Jul/2015:23:48:34 +0800] "POST /service/notes/addViewTimes_542.htm HTTP/1.0" 200 2 0.003
+127.0.0.1 - - [03/Jul/2015:23:49:31 +0800] "GET /notes/index-top-3.htm HTTP/1.0" 200 53494 0.041
+127.0.0.1 - - [03/Jul/2015:23:50:55 +0800] "GET /html/notes/20140609/544.html HTTP/1.0" 200 183694 0.076
+127.0.0.1 - - [03/Jul/2015:23:53:32 +0800] "POST /service/notes/addViewTimes_544.htm HTTP/1.0" 200 2 0.004
+127.0.0.1 - - [03/Jul/2015:23:54:53 +0800] "GET /html/notes/20140620/900.html HTTP/1.0" 200 151770 0.054
+127.0.0.1 - - [03/Jul/2015:23:57:42 +0800] "GET /html/notes/20140620/872.html HTTP/1.0" 200 52373 0.034
+127.0.0.1 - - [03/Jul/2015:23:58:17 +0800] "POST /service/notes/addViewTimes_900.htm HTTP/1.0" 200 2 0.003
+127.0.0.1 - - [03/Jul/2015:23:58:51 +0800] "GET / HTTP/1.0" 200 70044 0.057[root@master IMFdatatest]#
+
+ 
+
+运行结果
+
+[root@master IMFdatatest]#hadoop dfs -cat /library/outputURLLog/part-r-00000
+DEPRECATED: Use of this script to execute hdfs command is deprecated.
+Instead use the hdfs command for it.
+
+16/02/16 07:13:48 WARN util.NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+GET /   3
+GET /course/detail/3.htm        1
+GET /course/list/73.htm 1
+GET /html/notes/20140318/24.html        1
+GET /html/notes/20140609/542.html       1
+GET /html/notes/20140609/544.html       1
+GET /html/notes/20140617/779.html       1
+GET /html/notes/20140620/872.html       1
+GET /html/notes/20140620/900.html       1
+GET /notes/index-top-3.htm      1
+POST /service/notes/addViewTimes_23.htm 1
+POST /service/notes/addViewTimes_24.htm 1
+POST /service/notes/addViewTimes_542.htm        1
+POST /service/notes/addViewTimes_544.htm        1
+POST /service/notes/addViewTimes_779.htm        1
+POST /service/notes/addViewTimes_900.htm        1
+
+

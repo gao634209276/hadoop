@@ -1,0 +1,182 @@
+为了解决数据问题，修改tab为逗号，  String[] splited = line.split(",");
+       int price = Integer.valueOf(splited[1]); 运行ok
+
+[root@master IMFdatatest]#Hadoop dfs -cat /library/dataForChain.txt
+DEPRECATED: Use of this script to execute hdfs command is deprecated.
+Instead use the hdfs command for it.
+
+16/02/27 04:14:40 WARN util.NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-Java classes where applicable
+Computer,5000
+SmartPhone,3000
+Tablet,1500
+Tv,50000
+Book,18
+Clothes,150
+Gloves,9
+Computer,5000
+SmartPhone,3000
+Tablet,1500
+Tv,50000
+Book,18
+Clothes,150
+Gloves,9
+SmartPhone,3000
+Tablet,1500
+
+ 
+
+[root@master IMFdatatest]#hadoop dfs -cat /library/outputdataForChain9/part-r-00000
+DEPRECATED: Use of this script to execute hdfs command is deprecated.
+Instead use the hdfs command for it.
+
+16/02/27 04:16:39 WARN util.NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+cat: `/library/outputdataForChain9/part-r-00000': No such file or directory
+[root@master IMFdatatest]#hadoop dfs -cat /library/outputdataForChain9/part-r-00000
+DEPRECATED: Use of this script to execute hdfs command is deprecated.
+Instead use the hdfs command for it.
+
+16/02/27 04:17:05 WARN util.NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+Computer        10000
+SmartPhone      9000
+
+
+之前的问题如下
+
+问题定位：数组越界
+
+是数据读入时解析有问题，我们先搞一个随机数来测试，而将读入的数据屏蔽，程序可以运行了。说明算法没有问题。
+
+  int price =  (int)(Math.random() * 1000);
+
+ 
+
+都是这个问题
+
+WARN [Thread-3] (org.apache.hadoop.mapred.LocalJobRunner:560) 2016-02-27 07:26:45,428 ---- job_local363463905_0001
+java.lang.Exception: java.lang.RuntimeException: java.lang.ArrayIndexOutOfBoundsException: 1
+ at org.apache.hadoop.mapred.LocalJobRunner$Job.runTasks(LocalJobRunner.java:462)
+ at org.apache.hadoop.mapred.LocalJobRunner$Job.run(LocalJobRunner.java:522)
+Caused by: java.lang.RuntimeException: java.lang.ArrayIndexOutOfBoundsException: 1
+ at org.apache.hadoop.mapreduce.lib.chain.Chain.joinAllThreads(Chain.java:526)
+ at org.apache.hadoop.mapreduce.lib.chain.ChainMapper.run(ChainMapper.java:169)
+ at org.apache.hadoop.mapred.MapTask.runNewMapper(MapTask.java:784)
+ at org.apache.hadoop.mapred.MapTask.run(MapTask.java:341)
+ at org.apache.hadoop.mapred.LocalJobRunner$Job$MapTaskRunnable.run(LocalJobRunner.java:243)
+ at java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:511)
+ at java.util.concurrent.FutureTask.run(FutureTask.java:266)
+ at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1142)
+ at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+ at java.lang.Thread.run(Thread.java:745)
+Caused by: java.lang.ArrayIndexOutOfBoundsException: 1
+ at com.dtspark.hadoop.hellomapreduce.ChainMapperReducer$ChaintDataMapper1.map(ChainMapperReducer.java:39)
+ at com.dtspark.hadoop.hellomapreduce.ChainMapperReducer$ChaintDataMapper1.map(ChainMapperReducer.java:1)
+ at org.apache.hadoop.mapreduce.Mapper.run(Mapper.java:145)
+ at org.apache.hadoop.mapreduce.lib.chain.Chain$MapRunner.run(Chain.java:321)
+
+ 
+
+1数据文件
+
+[root@master IMFdatatest]#hadoop dfs -cat /library/dataForChain.txt
+DEPRECATED: Use of this script to execute hdfs command is
+
+deprecated.
+Instead use the hdfs command for it.
+
+16/02/26 17:56:29 WARN util.NativeCodeLoader: Unable to load
+
+native-hadoop library for your platform... using builtin-java
+
+classes where applicable
+Computer        5000
+SmartPhone      3000
+Tablet  1500
+Tv      50000
+Book    18
+Clothes 150
+Gloves  9
+Computer        5000
+SmartPhone      3000
+Tablet  1500
+Tv      50000
+Book    18
+Clothes 150
+Gloves  9
+SmartPhone      3000
+Tablet  1500
+
+ 
+
+ 
+
+2、运行打的日志
+
+ INFO [main] (org.apache.hadoop.conf.Configuration.deprecation:1049) 2016-02-27 07:26:42,792 ---- session.id is deprecated. Instead, use dfs.metrics.session-id
+ INFO [main] (org.apache.hadoop.metrics.jvm.JvmMetrics:76) 2016-02-27 07:26:42,796 ---- Initializing JVM Metrics with processName=JobTracker, sessionId=
+ WARN [main] (org.apache.hadoop.mapreduce.JobSubmitter:261) 2016-02-27 07:26:43,213 ---- No job jar file set.  User classes may not be found. See Job or Job#setJar(String).
+ INFO [main] (org.apache.hadoop.mapreduce.lib.input.FileInputFormat:281) 2016-02-27 07:26:43,244 ---- Total input paths to process : 1
+ INFO [main] (org.apache.hadoop.mapreduce.JobSubmitter:494) 2016-02-27 07:26:43,316 ---- number of splits:1
+ INFO [main] (org.apache.hadoop.mapreduce.JobSubmitter:583) 2016-02-27 07:26:43,404 ---- Submitting tokens for job: job_local363463905_0001
+ INFO [main] (org.apache.hadoop.mapreduce.Job:1300) 2016-02-27 07:26:43,571 ---- The url to track the job:http://localhost:8080/
+ INFO [main] (org.apache.hadoop.mapreduce.Job:1345) 2016-02-27 07:26:43,572 ---- Running job: job_local363463905_0001
+ INFO [Thread-3] (org.apache.hadoop.mapred.LocalJobRunner:471) 2016-02-27 07:26:43,573 ---- OutputCommitter set in config null
+ INFO [Thread-3] (org.apache.hadoop.mapred.LocalJobRunner:489) 2016-02-27 07:26:43,579 ---- OutputCommitter is org.apache.hadoop.mapreduce.lib.output.FileOutputCommitter
+ INFO [Thread-3] (org.apache.hadoop.mapred.LocalJobRunner:448) 2016-02-27 07:26:43,638 ---- Waiting for map tasks
+ INFO [LocalJobRunner Map Task Executor #0] (org.apache.hadoop.mapred.LocalJobRunner:224) 2016-02-27 07:26:43,638 ---- Starting task: attempt_local363463905_0001_m_000000_0
+ INFO [LocalJobRunner Map Task Executor #0] (org.apache.hadoop.yarn.util.ProcfsBasedProcessTree:181) 2016-02-27 07:26:43,680 ---- ProcfsBasedProcessTree currently is supported only on Linux.
+ INFO [LocalJobRunner Map Task Executor #0] (org.apache.hadoop.mapred.Task:587) 2016-02-27 07:26:43,829 ----  Using ResourceCalculatorProcessTree :org.apache.hadoop.yarn.util.WindowsBasedProcessTree@3900a9
+ INFO [LocalJobRunner Map Task Executor #0] (org.apache.hadoop.mapred.MapTask:753) 2016-02-27 07:26:43,835 ---- Processing split: hdfs://192.168.2.100:9000/library/dataForChain.txt:0+218
+ INFO [LocalJobRunner Map Task Executor #0] (org.apache.hadoop.mapred.MapTask:1202) 2016-02-27 07:26:43,924 ---- (EQUATOR) 0 kvi 26214396(104857584)
+ INFO [LocalJobRunner Map Task Executor #0] (org.apache.hadoop.mapred.MapTask:995) 2016-02-27 07:26:43,926 ---- mapreduce.task.io.sort.mb: 100
+ INFO [LocalJobRunner Map Task Executor #0] (org.apache.hadoop.mapred.MapTask:996) 2016-02-27 07:26:43,926 ---- soft limit at 83886080
+ INFO [LocalJobRunner Map Task Executor #0] (org.apache.hadoop.mapred.MapTask:997) 2016-02-27 07:26:43,926 ---- bufstart = 0; bufvoid = 104857600
+ INFO [LocalJobRunner Map Task Executor #0] (org.apache.hadoop.mapred.MapTask:998) 2016-02-27 07:26:43,927 ---- kvstart = 26214396; length = 6553600
+ INFO [LocalJobRunner Map Task Executor #0] (org.apache.hadoop.mapred.MapTask:402) 2016-02-27 07:26:43,930 ---- Map output collector class = org.apache.hadoop.mapred.MapTask$MapOutputBuffer
+ INFO [LocalJobRunner Map Task Executor #0] (org.apache.hadoop.conf.Configuration.deprecation:1049) 2016-02-27 07:26:43,971 ---- io.bytes.per.checksum is deprecated. Instead, use dfs.bytes-per-checksum
+ INFO [LocalJobRunner Map Task Executor #0] (org.apache.hadoop.conf.Configuration.deprecation:1049) 2016-02-27 07:26:44,026 ---- io.bytes.per.checksum is deprecated. Instead, use dfs.bytes-per-checksum
+ INFO [main] (org.apache.hadoop.mapreduce.Job:1366) 2016-02-27 07:26:44,574 ---- Job job_local363463905_0001 running in uber mode : false
+ INFO [main] (org.apache.hadoop.mapreduce.Job:1373) 2016-02-27 07:26:44,576 ----  map 0% reduce 0%
+ChaintDataMapper1 Methond Invoked!!!
+ChaintDataMapper1 Methond Invoked!!!
+ChaintDataMapper2  Methond Invoked!!!
+ChaintDataMapper1 Methond Invoked!!!
+ChaintDataMapper1 Methond Invoked!!!
+ChaintDataMapper2  Methond Invoked!!!
+ChaintDataMapper1 Methond Invoked!!!
+ChaintDataMapper2  Methond Invoked!!!
+ChaintDataMapper1 Methond Invoked!!!
+ChaintDataMapper2  Methond Invoked!!!
+ChaintDataMapper1 Methond Invoked!!!
+ChaintDataMapper2  Methond Invoked!!!
+ChaintDataMapper1 Methond Invoked!!!
+ChaintDataMapper2  Methond Invoked!!!
+ INFO [LocalJobRunner Map Task Executor #0] (org.apache.hadoop.mapred.MapTask:1457) 2016-02-27 07:26:45,390 ---- Starting flush of map output
+ INFO [LocalJobRunner Map Task Executor #0] (org.apache.hadoop.mapred.MapTask:1475) 2016-02-27 07:26:45,390 ---- Spilling map output
+ INFO [LocalJobRunner Map Task Executor #0] (org.apache.hadoop.mapred.MapTask:1476) 2016-02-27 07:26:45,390 ---- bufstart = 0; bufend = 51; bufvoid = 104857600
+ INFO [LocalJobRunner Map Task Executor #0] (org.apache.hadoop.mapred.MapTask:1478) 2016-02-27 07:26:45,390 ---- kvstart = 26214396(104857584); kvend = 26214384(104857536); length = 13/6553600
+ INFO [LocalJobRunner Map Task Executor #0] (org.apache.hadoop.mapred.MapTask:1660) 2016-02-27 07:26:45,412 ---- Finished spill 0
+ INFO [Thread-3] (org.apache.hadoop.mapred.LocalJobRunner:456) 2016-02-27 07:26:45,421 ---- map task executor complete.
+ WARN [Thread-3] (org.apache.hadoop.mapred.LocalJobRunner:560) 2016-02-27 07:26:45,428 ---- job_local363463905_0001
+java.lang.Exception: java.lang.RuntimeException: java.lang.ArrayIndexOutOfBoundsException: 1
+ at org.apache.hadoop.mapred.LocalJobRunner$Job.runTasks(LocalJobRunner.java:462)
+ at org.apache.hadoop.mapred.LocalJobRunner$Job.run(LocalJobRunner.java:522)
+Caused by: java.lang.RuntimeException: java.lang.ArrayIndexOutOfBoundsException: 1
+ at org.apache.hadoop.mapreduce.lib.chain.Chain.joinAllThreads(Chain.java:526)
+ at org.apache.hadoop.mapreduce.lib.chain.ChainMapper.run(ChainMapper.java:169)
+ at org.apache.hadoop.mapred.MapTask.runNewMapper(MapTask.java:784)
+ at org.apache.hadoop.mapred.MapTask.run(MapTask.java:341)
+ at org.apache.hadoop.mapred.LocalJobRunner$Job$MapTaskRunnable.run(LocalJobRunner.java:243)
+ at java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:511)
+ at java.util.concurrent.FutureTask.run(FutureTask.java:266)
+ at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1142)
+ at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+ at java.lang.Thread.run(Thread.java:745)
+Caused by: java.lang.ArrayIndexOutOfBoundsException: 1
+ at com.dtspark.hadoop.hellomapreduce.ChainMapperReducer$ChaintDataMapper1.map(ChainMapperReducer.java:39)
+ at com.dtspark.hadoop.hellomapreduce.ChainMapperReducer$ChaintDataMapper1.map(ChainMapperReducer.java:1)
+ at org.apache.hadoop.mapreduce.Mapper.run(Mapper.java:145)
+ at org.apache.hadoop.mapreduce.lib.chain.Chain$MapRunner.run(Chain.java:321)
+ INFO [main] (org.apache.hadoop.mapreduce.Job:1386) 2016-02-27 07:26:45,581 ---- Job job_local363463905_0001 failed with state FAILED due to: NA
+ INFO [main] (org.apache.hadoop.mapreduce.Job:1391) 2016-02-27 07:26:45,585 ---- Counters: 0
+
+ 

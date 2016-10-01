@@ -1,0 +1,114 @@
+1、数据文件
+[root@master IMFdatatest]#cat members.txt
+1       Spark   1
+2       Hadoop  1
+3       flink   3
+4       Kafka   1
+5       Tachyon 2
+[root@master IMFdatatest]#cat address.txt
+1       America
+2       China
+3       Germa
+2、上次文件到hdfs
+=======================================================
+代码分析
+1、自定义MemberKey hadoop如何定义key体现开发人员的水准
+private int keyID
+private boolean flag
+compareTo方法
+hashCode方法，就以keyID作为hashCode值
+2、自定义类Member_Information，包含成员ID 成员名字    地址
+ID  地址
+ String memberNo
+ String memberName
+ String addresNo
+ String addressName
+3、自定义GroupComparator
+定义组的compare方法
+4、map
+读入成员和地址文件，如每行分割的数据为2列，是地址文件，读入类
+Member_Information的地址ID和地址，KEY值读入MemberKey， 地址ID，及
+flag=true；map输出MemberKey、Member_Information；
+读入成员和地址文件，如每行分割的数据不为2列，是成员文件，读入类
+Member_Information的成员ID和成员名称和地址编号，KEY值读入
+MemberKey， 地址ID，及flag=false；map输出MemberKey、
+
+Member_Information
+
+5、值的比大小。
+在MemberKey中比大小，keyID 就是地址ID和flag都相等，则两个
+
+MemberKey相等；如果地址ID一样，如果flag为true，则这个MemberKey就
+
+小，对应的是地址文件的情况，因此就地址文件就排到了第一个元素；如
+
+果地址ID不一样，就按地址ID比大小。
+
+ public int compareTo(MemberKey member) {
+  if (this.keyID == member.keyID){
+   if(this.flag == member.flag){
+    return 0;
+   } else {
+    return this.flag? -1:1;
+   }
+  } else {
+   return this.keyID  - member.keyID > 0? 1
+
+:-1;
+  }
+ }
+ 
+
+
+分组比大小：
+分组时只按KeyID()比大小，地址ID大的就大。就按地址ID进行了分组，这样地址ID相同的地址文件和成员文件中的值就组合在一起了。
+
+class GroupComparator extends WritableComparator{
+
+ public GroupComparator() {
+  super(MemberKey.class, true);
+ }
+
+ @Override
+ public int compare(WritableComparable a,
+
+WritableComparable b) {
+  MemberKey x = (MemberKey)a;
+  MemberKey y = (MemberKey)b;
+  
+  System.out.println("GroupComparator has been
+
+invoked!!!");
+  
+  if(x.getKeyID() == y.getKeyID()){
+   return 0;
+  } else {
+   return x.getKeyID() > y.getKeyID()? 1 :
+
+-1;
+  }
+  
+ }
+5、reduce
+地址ID相同的地址文件和成员文件中的值就组合在一起，这样地址ID一样，如果flag为true，则这个MemberKey就
+
+小，对应的是地址文件的情况，因此就地址文件就排到了第一个元素，第一个元素我们不输出，仅仅输出之后的成员文件的值，
+
+输出 Member_Information
+
+就避免了之前的例子join建立一个list，不停给list内存中放数据而产生的OOM溢出情况，完成了性能优化
+=============================================================================================
+3、运行结果
+
+[root@master IMFdatatest]#hadoop dfs -cat /library/outputJoinimprove/part-r-00000
+DEPRECATED: Use of this script to execute hdfs command is deprecated.
+Instead use the hdfs command for it.
+
+16/02/20 06:53:39 WARN util.NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-Java classes where applicable
+4 Kafka America
+2 Hadoop America
+1 Spark America
+5 Tachyon China
+3 flink Germa
+
+ 

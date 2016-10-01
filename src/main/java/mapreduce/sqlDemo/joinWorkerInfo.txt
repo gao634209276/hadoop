@@ -1,0 +1,39 @@
+职员：
+1 工号  2 姓名 3 职位 4 上级工号 5 生日 6 工资   8 部门 9工作地点
+
+部门：
+1 部门信息 2 类型 3 地址
+
+ 
+
+数据文件
+
+30 sales chicago
+20 research dallas
+10 accounting newyork
+
+ 
+
+7499 allen salesman 7698 1981-02-20 1600 300 30 
+7782 clark managers 7639 1981-06-09 2450  10 
+7654 martin salesman 7698 1981-03-20 1250 1400 30 boston
+7900 james clerk 7698 1981-01-09 950  30 
+7788 scott analyst 7566 1981-09-01 3000 100 20
+
+ 
+
+ 
+
+[root@master IMFdatatest]#Hadoop dfs -cat /library/outputjoin1/part-r-00000
+DEPRECATED: Use of this script to execute hdfs command is deprecated.
+Instead use the hdfs command for it.
+
+16/02/16 08:46:56 WARN util.NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-Java classes where applicable
+10          10  accounting
+10      7782   clark 10 
+20      7788   scott 20 
+20          20  research
+30          30  sales
+30      7900   james 30 
+30      7654   martin 30 
+30      7499   allen 30  

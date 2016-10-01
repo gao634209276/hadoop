@@ -1,0 +1,96 @@
+Haoop selfjoin 左表 右表 自连接
+
+map
+context.write写2次，作为左表、右表
+左表：
+context.write(new Text(array[1].trim()), new Text("1_"+array[0].trim()));
+左表第一列是父亲，第二列是孩子；
+右表：
+  context.write(new Text(array[0].trim()), new Text("0_"+array[1].trim()));
+右表第一列是孩子，第二列是父亲；
+
+reduce：
+判断孩子还是父亲，生成grandChildList和grandParentList，做笛卡尔积
+
+ 
+
+ 
+
+1、数据文件
+
+1列是孩子 2列是父亲，找祖父亲
+
+[root@master IMFdatatest]#Hadoop dfs -cat   /library/selfjoin/selfjoin.txt
+DEPRECATED: Use of this script to execute hdfs command is deprecated.
+Instead use the hdfs command for it.
+
+16/02/20 17:22:07 WARN util.NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-Java classes where applicable
+Tom     Lucy
+Tom     Jack
+Jone    Lucy
+Jone    Jack
+Lucy    Mary
+Lucy    Ben
+Jack    Alice
+Jack    Jesse
+Terry   Alice
+Terry   Jesse
+Philip  Terry
+Philip  Alma
+Mark    Terry
+Mark    Alma
+
+2、上传hdfs
+
+ 
+
+3、结果
+
+[root@master IMFdatatest]#hadoop dfs -cat /library/outputselfjoin3/part-r-00000
+DEPRECATED: Use of this script to execute hdfs command is deprecated.
+Instead use the hdfs command for it.
+
+16/02/20 18:33:40 WARN util.NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+Tom     Alice
+Tom     Jesse
+Jone    Alice
+Jone    Jesse
+Tom     Ben
+Tom     Mary
+Jone    Ben
+Jone    Mary
+Philip  Alice
+Philip  Jesse
+Mark    Alice
+Mark    Jesse
+
+打的日志
+
+map key array[1]:  Lucy     value array[0]:  1_Tom
+map key array[0]:  Tom     value array[1]:  0_Lucy
+map key array[1]:  Jack     value array[0]:  1_Tom
+map key array[0]:  Tom     value array[1]:  0_Jack
+map key array[1]:  Lucy     value array[0]:  1_Jone
+map key array[0]:  Jone     value array[1]:  0_Lucy
+map key array[1]:  Jack     value array[0]:  1_Jone
+map key array[0]:  Jone     value array[1]:  0_Jack
+map key array[1]:  Mary     value array[0]:  1_Lucy
+map key array[0]:  Lucy     value array[1]:  0_Mary
+map key array[1]:  Ben     value array[0]:  1_Lucy
+map key array[0]:  Lucy     value array[1]:  0_Ben
+map key array[1]:  Alice     value array[0]:  1_Jack
+map key array[0]:  Jack     value array[1]:  0_Alice
+map key array[1]:  Jesse     value array[0]:  1_Jack
+map key array[0]:  Jack     value array[1]:  0_Jesse
+map key array[1]:  Alice     value array[0]:  1_Terry
+map key array[0]:  Terry     value array[1]:  0_Alice
+map key array[1]:  Jesse     value array[0]:  1_Terry
+map key array[0]:  Terry     value array[1]:  0_Jesse
+map key array[1]:  Terry     value array[0]:  1_Philip
+map key array[0]:  Philip     value array[1]:  0_Terry
+map key array[1]:  Alma     value array[0]:  1_Philip
+map key array[0]:  Philip     value array[1]:  0_Alma
+map key array[1]:  Terry     value array[0]:  1_Mark
+map key array[0]:  Mark     value array[1]:  0_Terry
+map key array[1]:  Alma     value array[0]:  1_Mark
+map key array[0]:  Mark     value array[1]:  0_Alma
