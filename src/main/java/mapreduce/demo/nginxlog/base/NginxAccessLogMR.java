@@ -24,20 +24,19 @@ import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 
 /**
- * 测试输入数据格式： ... 183.60.212.153 - - [19/Feb/2013:10:23:29 +0800]
- * "GET /o2o/media.html?menu=3 HTTP/1.1" 200 16691 "-"
- * "Mozilla/5.0 (compatible; EasouSpider; +http://www.easou.com/search/spider.html)"
- * ... 输出数据格式 ... 日期 独立IP个数 ...
- * 
- * @author liangchuan
+ * 测试输入数据格式：183.60.212.153 - - [19/Feb/2013:10:23:29 +0800] "GET /o2o/media.html?menu=3 HTTP/1.1" 200 16691 "-""Mozilla/5.0 (compatible; EasouSpider; +http://www.easou.com/search/spider.html)"
  */
 public class NginxAccessLogMR {
 
-	public static class Map01 extends Mapper<LongWritable, Text, Text, Text> {
+	/**
+	 * map端解析log,输出key为日期,value为整行log
+	 */
+	private static class Map01 extends Mapper<LongWritable, Text, Text, Text> {
+
 		private Date getDateByValue(String vs) throws ParseException {
+
 			String date = vs.substring(vs.indexOf("["), vs.indexOf("]") + 1);
-			SimpleDateFormat format = new SimpleDateFormat(
-					"[dd/MMM/yyyy:HH:mm:ss Z]", Locale.US);
+			SimpleDateFormat format = new SimpleDateFormat("[dd/MMM/yyyy:HH:mm:ss Z]", Locale.US);
 			Date d = format.parse(date);
 			return d;
 		}
@@ -56,18 +55,21 @@ public class NginxAccessLogMR {
 				// 以日期分组
 				context.write(k, new Text(vs));
 			} catch (Exception e) {
-				System.out.println("MAPPER ++++++++++++++++++++++++++"
-						+ e.getMessage());
+				System.out.println("MAPPER ++++++++++++++++++++++++++" + e.getMessage());
 			}
 		}
 	}
 
-	public static class Reduce01 extends Reducer<Text, Text, Text, IntWritable> {
+	/**
+	 * reduce对相同日期的ip聚合放入一个map中,输出的value为map的容量
+	 */
+	private static class Reduce01 extends Reducer<Text, Text, Text, IntWritable> {
 
 		@Override
 		protected void reduce(Text key, Iterable<Text> values, Context context)
 				throws IOException, InterruptedException {
-			Map<String, String> m = new HashMap<String, String>();
+
+			Map<String, String> m = new HashMap<>();
 			for (Text value : values) {
 				String vs = value.toString();
 				String[] arr = vs.split("- -");
@@ -81,11 +83,9 @@ public class NginxAccessLogMR {
 
 	/**
 	 * 文件名过滤
-	 * 
-	 * @author liangchuan
-	 * 
+	 * 如果文件是dir,
 	 */
-	public static class MyPathFilter implements PathFilter, Configurable {
+	private static class MyPathFilter implements PathFilter, Configurable {
 		Configuration conf = null;
 		FileSystem fs = null;
 
@@ -120,11 +120,9 @@ public class NginxAccessLogMR {
 
 	public static void main(String[] args) {
 
-		// JobConf conf = new JobConf(MaxTptr.class);
 		Job job = null;
 		try {
 			job = Job.getInstance(new Configuration());
-			//job = new Job();
 			job.setJarByClass(NginxAccessLogMR.class);
 
 			FileInputFormat.addInputPath(job, new Path(args[0]));
@@ -144,17 +142,13 @@ public class NginxAccessLogMR {
 
 			// 第三个参数是要过滤的文件名关键字，默认error
 			String pfk = args.length > 2 ? args[2] : "error";
+
 			job.getConfiguration().set("pathfilter.pattern", pfk);
 			FileInputFormat.setInputPathFilter(job, MyPathFilter.class);
 
 			System.exit(job.waitForCompletion(true) ? 0 : 1);
-		} catch (IOException e) {
-			e.printStackTrace();
-		} catch (InterruptedException e) {
-			e.printStackTrace();
-		} catch (ClassNotFoundException e) {
+		} catch (Exception e) {
 			e.printStackTrace();
 		}
 	}
-
 }

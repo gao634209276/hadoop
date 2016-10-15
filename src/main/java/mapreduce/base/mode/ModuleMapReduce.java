@@ -2,7 +2,6 @@ package mapreduce.base.mode;
 
 import java.io.IOException;
 
-import mapreduce.base.mode.min.DefaultMapReduce;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.conf.Configured;
@@ -16,12 +15,14 @@ import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.mapreduce.lib.input.TextInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;
-import org.apache.hadoop.mapreduce.lib.partition.HashPartitioner;
 import org.apache.hadoop.util.Tool;
 import org.apache.hadoop.util.ToolRunner;
 
 /**
- * MapReduce ģ��
+ * MapReduce
+ * 这里通过使用util中的ToolRunner以及Tool封装的run方法进行提交job
+ * <p>
+ * main()-->ToolRunner.run-->new Tool().run-->conf/create/submitJob
  */
 public class ModuleMapReduce extends Configured implements Tool {
 	/**
@@ -75,12 +76,19 @@ public class ModuleMapReduce extends Configured implements Tool {
 	@Override
 	public int run(String[] args) throws Exception {
 
-		// step 1:set configuration
+		/**
+		 * step 1:set configuration
+		 */
 		Configuration conf = new Configuration();
 
+		/**
+		 * 对参数解析,参数包含input,output的path
+		 */
 		Job job = parseInputAndOutput(this, conf, args);
 
-		// step 3: set job
+		/**
+		 * step 3: set job
+		 */
 		// 1: set run jar class
 		job.setJarByClass(ModuleMapReduce.class);
 		// 2: set input format
@@ -111,7 +119,10 @@ public class ModuleMapReduce extends Configured implements Tool {
 		job.setOutputValueClass(Text.class);
 		// 14:set job output path
 		FileOutputFormat.setOutputPath(job, new Path(args[1]));
-		// step 4 submit job
+
+		/**
+		 * step 4 : submit job
+		 */
 		boolean isSuccess = job.waitForCompletion(true);
 		return isSuccess ? 0 : 1;
 
@@ -126,7 +137,7 @@ public class ModuleMapReduce extends Configured implements Tool {
 		}
 
 		// step 2:create job
-		Job job = new Job(conf, tool.getClass().getSimpleName());
+		Job job = Job.getInstance(conf, tool.getClass().getSimpleName());
 		return job;
 	}
 

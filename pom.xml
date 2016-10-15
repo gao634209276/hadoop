@@ -92,6 +92,11 @@
 			<artifactId>lzo-hadoop</artifactId>
 			<version>1.0.5</version>
 		</dependency>
+		<dependency>
+			<groupId>junit</groupId>
+			<artifactId>junit</artifactId>
+			<version>RELEASE</version>
+		</dependency>
 		<!-- <dependency> <groupId>mysql</groupId> <artifactId>mysql-connector-java</artifactId> 
 			<version>5.1.6</version> </dependency> -->
 

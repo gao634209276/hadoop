@@ -1,0 +1,15 @@
+mkbootimg/mkbootimg.c
+/logwrapper/logwrapper.c
+/adb/log_service.c
+/adb/adb_client.c
+/adb/usb_windows.c
+/adb/get_my_path_darwin.c
+/adb/usb_osx.c
+/adb/file_sync_service.c
+/adb/file_sync_client.c
+/adb/usb_linux.c
+/adb/fdevent.c
+/adb/usb_linux_client.c
+/adb/commandline.c
+/adb/remount_service.c
+/adb/sockets.c

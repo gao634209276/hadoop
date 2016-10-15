@@ -24,8 +24,7 @@ public class CombineSmallfileInputFormat extends
 		try {
 			recordReader.initialize(combineFileSplit, context);
 		} catch (InterruptedException e) {
-			new RuntimeException(
-					"Error to initialize CombineSmallfileRecordReader.");
+			new RuntimeException("Error to initialize CombineSmallfileRecordReader.");
 		}
 		return recordReader;
 	}

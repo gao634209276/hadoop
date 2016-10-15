@@ -35,11 +35,7 @@ public class logClean {
 				word.set(cleanContent);
 				try {
 					context.write(word, v);
-				} catch (IOException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				} catch (InterruptedException e) {
-					// TODO Auto-generated catch block
+				} catch (IOException | InterruptedException e) {
 					e.printStackTrace();
 				}
 			}

@@ -1,11 +1,14 @@
 package mapreduce.base.writable;
 
+import java.io.DataInput;
+import java.io.DataOutput;
 import java.io.IOException;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.Text;
+import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.Reducer;
@@ -13,11 +16,50 @@ import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 
 /**
+ * 数据格式:phoneNum,upPackNum,downPayLoad,upPayLoad,downPackNum
+ * <p>
+ * map将数据解析组装为自定义的Writable实例对象,phoneNum为key,该对象为value
+ * reduce对相同key的dataWritable对象中各自的属性(int值)进行sum聚合,最后再次组装输出
  */
 public class DataTotalMapReduce {
 
+	public static void main(String[] args) throws Exception {
+
+		args = new String[]{"file/wc", "target/out"};
+		int status = new DataTotalMapReduce().run(args);
+		System.exit(status);
+	}
+
+
+	public int run(String[] args) throws Exception {
+
+		Configuration conf = new Configuration();
+		Job job = Job.getInstance(conf, DataTotalMapReduce.class.getSimpleName());
+		job.setJarByClass(DataTotalMapReduce.class);
+
+
+		// 1) input
+		Path inputDir = new Path(args[0]);
+		FileInputFormat.addInputPath(job, inputDir);
+		// 2) map
+		job.setMapperClass(DataTotalMapper.class);
+		job.setMapOutputKeyClass(Text.class);
+		job.setMapOutputValueClass(DataWritable.class);
+		// 3) reduce
+		job.setReducerClass(DataTotalReduce.class);
+		job.setOutputKeyClass(Text.class);
+		job.setOutputValueClass(DataWritable.class);
+		// 4) output
+		Path outputDir = new Path(args[1]);
+		FileOutputFormat.setOutputPath(job, outputDir);
+		// submint job
+		boolean isSuccess = job.waitForCompletion(true);
+		return isSuccess ? 0 : 1;
+	}
+
+
 	// Mapper Class
-	static class DataTotalMapper extends Mapper<LongWritable, Text, Text, DataWritable> {
+	private static class DataTotalMapper extends Mapper<LongWritable, Text, Text, DataWritable> {
 
 		private Text mapOutputKey = new Text();
 		private DataWritable dataWritable = new DataWritable();
@@ -41,8 +83,7 @@ public class DataTotalMapReduce {
 		}
 	}
 
-	// Reduce Class
-	static class DataTotalReduce extends Reducer<Text, DataWritable, Text, DataWritable> {
+	private static class DataTotalReduce extends Reducer<Text, DataWritable, Text, DataWritable> {
 
 		private DataWritable dataWritable = new DataWritable();
 
@@ -65,51 +106,76 @@ public class DataTotalMapReduce {
 			//System.out.println(dataWritable.toString());
 			// set reduce/job output
 			context.write(key, dataWritable);
-
 		}
 	}
+}
 
-	// Driver Code
-	public int run(String[] args) throws Exception {
+/**
+ * 自定义一个包含4个int数据的数据结构,组装为javaBean,并实现可序列化
+ */
+class DataWritable implements Writable {
 
-		// get conf
-		Configuration conf = new Configuration();
-		// create job
-		Job job = new Job(conf, DataTotalMapReduce.class.getSimpleName());
-		// set
-		job.setJarByClass(DataTotalMapReduce.class);
-		// 1) input
-		Path inputDir = new Path(args[0]);
-		FileInputFormat.addInputPath(job, inputDir);
-		// 2) map
-		job.setMapperClass(DataTotalMapper.class);
-		job.setMapOutputKeyClass(Text.class);
-		job.setMapOutputValueClass(DataWritable.class);
-		// 3) reduce
-		job.setReducerClass(DataTotalReduce.class);
-		job.setOutputKeyClass(Text.class);
-		job.setOutputValueClass(DataWritable.class);
-		// 4) output
-		Path outputDir = new Path(args[1]);
-		FileOutputFormat.setOutputPath(job, outputDir);
-		// submint job
-		boolean isSuccess = job.waitForCompletion(true);
-		return isSuccess ? 0 : 1;
+	// upload
+	private int upPackNum;
+	private int upPayLoad;
+	// download
+	private int downPackNum;
+	private int downPayLoad;
+
+	public DataWritable() {
 	}
 
-	// run mapreduce
-	public static void main(String[] args) throws Exception {
+	public void set(int upPackNum, int upPayLoad, int downPackNum, int downPayLoad) {
 
-		// set args
-		args = new String[] {
-				// input path
-				"hdfs://hadoop-master:9000/opt/wc/input1",
-				// output path
-				"hdfs://hadoop-master:9000/opt/wc/output1" };
-		// run job
-		int status = new DataTotalMapReduce().run(args);
-		// exit
-		System.exit(status);
+		this.upPackNum = upPackNum;
+		this.upPayLoad = upPayLoad;
+		this.downPackNum = downPackNum;
+		this.downPayLoad = downPayLoad;
 
 	}
+
+	public int getUpPackNum() {
+		return upPackNum;
+	}
+
+	public int getUpPayLoad() {
+		return upPayLoad;
+	}
+
+	public int getDownPackNum() {
+		return downPackNum;
+	}
+
+	public int getDownPayLoad() {
+		return downPayLoad;
+	}
+
+	/**
+	 * 序列化对象中要输出的属性
+	 *
+	 * @param out 将对象序列化输出为输出流的对象
+	 */
+	@Override
+	public void write(DataOutput out) throws IOException {
+
+		out.writeInt(upPackNum);
+		out.writeInt(upPayLoad);
+		out.writeInt(downPackNum);
+		out.writeInt(downPayLoad);
+	}
+
+	@Override
+	public void readFields(DataInput in) throws IOException {
+		this.upPackNum = in.readInt();
+		this.upPayLoad = in.readInt();
+		this.downPackNum = in.readInt();
+		this.downPayLoad = in.readInt();
+	}
+
+
+	@Override
+	public String toString() {
+		return upPackNum + "\t" + upPayLoad + "\t" + downPackNum + "\t" + downPayLoad;
+	}
+
 }

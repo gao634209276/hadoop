@@ -13,9 +13,40 @@ import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.mapreduce.lib.input.FileSplit;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 
+/**
+ * 提供path下不同文件的数据
+ * 返回数据中的word及对应的文件和统计的个数
+ */
 public class InverseIndex {
 
-	public static class IndexMapper extends
+	public static void main(String[] args) throws IOException, ClassNotFoundException, InterruptedException {
+
+		Configuration conf = new Configuration();
+		Job job = Job.getInstance(conf);
+
+		if (args == null || args.length == 0) {
+			args = new String[]{"file/inverseIndex", "target/out"};
+		}
+
+		job.setJarByClass(InverseIndex.class);
+		job.setMapperClass(IndexMapper.class);
+		job.setMapOutputKeyClass(Text.class);
+		job.setMapOutputValueClass(Text.class);
+		job.setCombinerClass(IndexConbiner.class);
+		FileInputFormat.setInputPaths(job, new Path(args[0]));
+
+		job.setReducerClass(IndexReducer.class);
+		job.setOutputKeyClass(Text.class);
+		job.setOutputValueClass(Text.class);
+		FileOutputFormat.setOutputPath(job, new Path(args[1]));
+		job.waitForCompletion(true);
+	}
+
+	/**
+	 * map端通过context获取输入分片,然后得到该文件的路径
+	 * 按行切分word并与该分片的path组装为key,value为1
+	 */
+	private static class IndexMapper extends
 			Mapper<LongWritable, Text, Text, Text> {
 
 		private Text k = new Text();
@@ -39,9 +70,12 @@ public class InverseIndex {
 	}
 
 	/**
-	 * IndexConbiner在map端做combine
+	 * map端做combine
+	 * <p>
+	 * 对相同的word和path的个数进行sum聚合记为count
+	 * 对word-->path再次拆分为word和path,输出key为word,value为path-->count
 	 */
-	public static class IndexConbiner extends Reducer<Text, Text, Text, Text> {
+	private static class IndexConbiner extends Reducer<Text, Text, Text, Text> {
 
 		private Text k = new Text();
 		private Text v = new Text();
@@ -67,9 +101,10 @@ public class InverseIndex {
 	}
 
 	/**
-	 * 对相同word聚合,value为\t分割的字符串累加
+	 * reduce对相同word聚合,
+	 * value(path-->count)通过字符串append聚合
 	 */
-	public static class IndexReducer extends Reducer<Text, Text, Text, Text> {
+	private static class IndexReducer extends Reducer<Text, Text, Text, Text> {
 		private Text v = new Text();
 
 		@Override
@@ -86,22 +121,5 @@ public class InverseIndex {
 		}
 	}
 
-	public static void main(String[] args) throws IOException,
-			ClassNotFoundException, InterruptedException {
 
-		Configuration conf = new Configuration();
-		Job job = Job.getInstance(conf);
-		job.setJarByClass(InverseIndex.class);
-		job.setMapperClass(IndexMapper.class);
-		job.setMapOutputKeyClass(Text.class);
-		job.setMapOutputValueClass(Text.class);
-		job.setCombinerClass(IndexConbiner.class);
-		FileInputFormat.setInputPaths(job, new Path(args[0]));
-
-		job.setReducerClass(IndexReducer.class);
-		job.setOutputKeyClass(Text.class);
-		job.setOutputValueClass(Text.class);
-		FileOutputFormat.setOutputPath(job, new Path(args[1]));
-		job.waitForCompletion(true);
-	}
 }

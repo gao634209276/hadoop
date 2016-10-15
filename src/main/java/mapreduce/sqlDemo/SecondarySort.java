@@ -96,7 +96,6 @@ class MyPartitioner extends Partitioner<IntPair, Text> {
 
 	@Override
 	public int getPartition(IntPair key, Text value, int numPartitioneS) {
-		// TODO Auto-generated method stub
 		return (key.hashCode() & Integer.MAX_VALUE) % numPartitioneS;
 	}
 
@@ -118,7 +117,6 @@ class IntPair implements WritableComparable<IntPair> {
 
 	@Override
 	public void readFields(DataInput input) throws IOException {
-		// TODO Auto-generated method stub
 		this.first = input.readUTF();
 		this.Second = input.readUTF();
 
@@ -126,14 +124,12 @@ class IntPair implements WritableComparable<IntPair> {
 
 	@Override
 	public void write(DataOutput output) throws IOException {
-		// TODO Auto-generated method stub
 		output.writeUTF(this.first);
 		output.writeUTF(this.Second);
 	}
 
 	@Override
 	public int compareTo(IntPair o) {
-		// TODO Auto-generated method stub
 
 		if (!this.first.equals(o.getFirst())) {
 			return this.first.compareTo(o.first);
