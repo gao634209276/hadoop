@@ -1,16 +1,21 @@
-package mapreduce.demo.nginxlog;
+package mapreduce.nginxlog.session;
 
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.Objects;
 
+/**
+ * WebLogSessionBean结构中包含四个String类型属性:
+ * time IP_addr session request_URL referal
+ */
 public class WebLogSessionBean {
 
-	String time;
-	String IP_addr;
-	String session;
-	String request_URL;
-	String referal;
+	private String time;
+	private String IP_addr;
+	private String session;
+	private String request_URL;
+	private String referal;
 
 	public String getTime() {
 		return time;
@@ -55,11 +60,10 @@ public class WebLogSessionBean {
 	public Date getTimeWithDateFormat() {
 
 		SimpleDateFormat sdf_final = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-		if (this.time != null && this.time != "") {
+		if (this.time != null && !Objects.equals(this.time, "")) {
 			try {
 				return sdf_final.parse(this.time);
 			} catch (ParseException e) {
-				// TODO Auto-generated catch block
 				e.printStackTrace();
 			}
 		}
@@ -68,8 +72,6 @@ public class WebLogSessionBean {
 
 	@Override
 	public String toString() {
-		return time + " " + IP_addr + " " + session + " " + request_URL + " "
-				+ referal;
+		return time + " " + IP_addr + " " + session + " " + request_URL + " " + referal;
 	}
-
 }

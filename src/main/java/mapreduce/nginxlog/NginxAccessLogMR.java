@@ -1,4 +1,4 @@
-package mapreduce.demo.nginxlog.base;
+package mapreduce.nginxlog;
 
 import java.io.IOException;
 import java.text.ParseException;
@@ -83,7 +83,6 @@ public class NginxAccessLogMR {
 
 	/**
 	 * 文件名过滤
-	 * 如果文件是dir,
 	 */
 	private static class MyPathFilter implements PathFilter, Configurable {
 		Configuration conf = null;

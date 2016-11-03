@@ -1,17 +1,21 @@
-package mapreduce.demo.nginxlog;
+package mapreduce.nginxlog.page;
 
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 
+/**
+ * PageViewsBean数据结构保存一下数据:
+ * session IP_addr time visit_URL stayTime step
+ */
 public class PageViewsBean {
 
-	String session;
-	String IP_addr;
-	String time;
-	String visit_URL;
-	String stayTime;
-	String step;
+	private String session;
+	private String IP_addr;
+	private String time;
+	private String visit_URL;
+	private String stayTime;
+	private String step;
 
 	public String getSession() {
 		return session;
@@ -61,6 +65,9 @@ public class PageViewsBean {
 		this.step = step;
 	}
 
+	/**
+	 * 对该对象的属性time格式化yyyy-MM-dd HH:mm:ss,返回此格式的Data
+	 */
 	public Date getTimeWithDateFormat() {
 
 		SimpleDateFormat sdf_final = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
@@ -68,7 +75,6 @@ public class PageViewsBean {
 			try {
 				return sdf_final.parse(this.time);
 			} catch (ParseException e) {
-				// TODO Auto-generated catch block
 				e.printStackTrace();
 			}
 		}
@@ -77,8 +83,6 @@ public class PageViewsBean {
 
 	@Override
 	public String toString() {
-		return session + " " + IP_addr + " " + time + " " + visit_URL + " "
-				+ stayTime + " " + step;
+		return session + " " + IP_addr + " " + time + " " + visit_URL + " " + stayTime + " " + step;
 	}
-
 }

@@ -1,15 +1,19 @@
-package mapreduce.demo.nginxlog;
+package mapreduce.nginxlog.visits;
 
+/**
+ * JavaBean数据结构包含一下属性:
+ * session start_time end_time entry_page leave_page visit_page_num IP_addr referal
+ */
 public class VisitsInfoBean {
 
-	String session;
-	String start_time;
-	String end_time;
-	String entry_page;
-	String leave_page;
-	String visit_page_num;
-	String IP_addr;
-	String referal;
+	private String session;
+	private String start_time;
+	private String end_time;
+	private String entry_page;
+	private String leave_page;
+	private String visit_page_num;
+	private String IP_addr;
+	private String referal;
 
 	public String getSession() {
 		return session;
@@ -78,8 +82,7 @@ public class VisitsInfoBean {
 	@Override
 	public String toString() {
 		return session + " " + start_time + " " + end_time + " " + entry_page
-				+ " " + leave_page + " " + visit_page_num + " " + IP_addr + " "
-				+ referal;
+				+ " " + leave_page + " " + visit_page_num + " " + IP_addr + " " + referal;
 	}
 
 }

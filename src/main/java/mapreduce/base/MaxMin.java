@@ -53,7 +53,7 @@ public class MaxMin {
 	/**
 	 * map端读取每行并解析为一个Long型值,使用统一的Key,输出为Key LongWritable值
 	 */
-	public static class MaxMinMapper extends Mapper<LongWritable, Text, Text, LongWritable> {
+	private static class MaxMinMapper extends Mapper<LongWritable, Text, Text, LongWritable> {
 
 		private Text keyText = new Text("Key");
 
@@ -72,11 +72,11 @@ public class MaxMin {
 	/**
 	 * reduce端对value集合循环求出最大值和最小值
 	 */
-	public static class MaxMinReducer extends Reducer<Text, LongWritable, Text, LongWritable> {
+	private static class MaxMinReducer extends Reducer<Text, LongWritable, Text, LongWritable> {
 
 		@Override
 		protected void reduce(Text key, Iterable<LongWritable> values,
-				Context context) throws IOException, InterruptedException {
+		                      Context context) throws IOException, InterruptedException {
 
 			long max = Long.MIN_VALUE;
 			long min = Long.MAX_VALUE;

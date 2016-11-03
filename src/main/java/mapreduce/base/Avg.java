@@ -107,7 +107,6 @@ public class Avg {
 			for (IntWritable val : values) {
 				sum += val.get();
 			}
-
 			context.write(key, new DoubleWritable(sum / 3.0));
 		}
 	}

@@ -1,22 +1,16 @@
 package mapreduce.sqlDemo;
 
-import java.io.DataInput;
-import java.io.DataOutput;
 import java.io.IOException;
-import java.util.Iterator;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.Text;
-import org.apache.hadoop.io.WritableComparable;
-import org.apache.hadoop.io.WritableComparator;
 import org.apache.hadoop.mapreduce.lib.chain.ChainReducer;
 import org.apache.hadoop.mapreduce.lib.chain.ChainMapper;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
-import org.apache.hadoop.mapreduce.Partitioner;
 import org.apache.hadoop.mapreduce.Reducer;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
@@ -24,36 +18,25 @@ import org.apache.hadoop.util.GenericOptionsParser;
 
 public class ChainMapperReducer {
 
-	public static class ChaintDataMapper1 extends
-			Mapper<LongWritable, Text, Text, IntWritable> {
+	private static class ChaintDataMapper1 extends Mapper<LongWritable, Text, Text, IntWritable> {
 
-		public void map(LongWritable key, Text value, Context context)
-				throws IOException, InterruptedException {
+		public void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
 
 			System.out.println("ChaintDataMapper1 Methond Invoked!!!");
-
 			String line = value.toString().trim();
 			if (line.length() > 1) {
 				String[] splited = line.split("\t");
 				int price = Integer.valueOf(splited[1]);
-
 				if (price < 10000) {
-					context.write(new Text(splited[0].trim()), new IntWritable(
-							price));
-
+					context.write(new Text(splited[0].trim()), new IntWritable(price));
 				}
-
 			}
-
 		}
-
 	}
 
-	public static class ChaintDataMapper2 extends
-			Mapper<Text, IntWritable, Text, IntWritable> {
+	private static class ChaintDataMapper2 extends Mapper<Text, IntWritable, Text, IntWritable> {
 
-		public void map(Text key, IntWritable value, Context context)
-				throws IOException, InterruptedException {
+		public void map(Text key, IntWritable value, Context context) throws IOException, InterruptedException {
 
 			System.out.println("ChaintDataMapper2  Methond Invoked!!!");
 
@@ -67,29 +50,21 @@ public class ChainMapperReducer {
 
 	}
 
-	public static class ChaintDataMapper3 extends
-			Mapper<Text, IntWritable, Text, IntWritable> {
+	private static class ChaintDataMapper3 extends Mapper<Text, IntWritable, Text, IntWritable> {
 
-		public void map(Text key, IntWritable value, Context context)
-				throws IOException, InterruptedException {
+		public void map(Text key, IntWritable value, Context context) throws IOException, InterruptedException {
 
 			System.out.println("ChaintDataMapper3  Methond Invoked!!!");
-
 			if (value.get() > 5000) {
-
 				context.write(key, value);
-
 			}
-
 		}
-
 	}
 
-	public static class ChainDataReducer extends
-			Reducer<Text, IntWritable, Text, IntWritable> {
+	private static class ChainDataReducer extends Reducer<Text, IntWritable, Text, IntWritable> {
 
 		public void reduce(Text key, Iterable<IntWritable> values,
-				Context context) throws IOException, InterruptedException {
+		                   Context context) throws IOException, InterruptedException {
 			System.out.println("Reduce Methond Invoked!!!");
 
 			int summary = 0;
@@ -106,11 +81,9 @@ public class ChainMapperReducer {
 	public static void main(String[] args) throws Exception {
 
 		Configuration conf = new Configuration();
-		String[] otherArgs = new GenericOptionsParser(conf, args)
-				.getRemainingArgs();
+		String[] otherArgs = new GenericOptionsParser(conf, args).getRemainingArgs();
 		if (otherArgs.length < 2) {
-			System.err
-					.println("Usage: ChainMapperReducer <in> [<in>...] <out>");
+			System.err.println("Usage: ChainMapperReducer <in> [<in>...] <out>");
 			System.exit(2);
 		}
 
@@ -120,18 +93,11 @@ public class ChainMapperReducer {
 		job.setMapperClass(ChaintDataMapper1.class);
 		job.setReducerClass(ChainDataReducer.class);
 
-		ChainMapper.addMapper(job, ChaintDataMapper1.class, LongWritable.class,
-				Text.class, Text.class, IntWritable.class, new Configuration());
-		ChainMapper.addMapper(job, ChaintDataMapper2.class, Text.class,
-				IntWritable.class, Text.class, IntWritable.class,
-				new Configuration());
+		ChainMapper.addMapper(job, ChaintDataMapper1.class, LongWritable.class, Text.class, Text.class, IntWritable.class, new Configuration());
+		ChainMapper.addMapper(job, ChaintDataMapper2.class, Text.class, IntWritable.class, Text.class, IntWritable.class, new Configuration());
 
-		ChainReducer.setReducer(job, ChainDataReducer.class, Text.class,
-				IntWritable.class, Text.class, IntWritable.class,
-				new Configuration());
-		ChainReducer.addMapper(job, ChaintDataMapper3.class, Text.class,
-				IntWritable.class, Text.class, IntWritable.class,
-				new Configuration());
+		ChainReducer.setReducer(job, ChainDataReducer.class, Text.class, IntWritable.class, Text.class, IntWritable.class, new Configuration());
+		ChainReducer.addMapper(job, ChaintDataMapper3.class, Text.class, IntWritable.class, Text.class, IntWritable.class, new Configuration());
 
 		job.setOutputKeyClass(Text.class);
 		job.setOutputValueClass(IntWritable.class);
@@ -141,8 +107,7 @@ public class ChainMapperReducer {
 		for (int i = 0; i < otherArgs.length - 1; ++i) {
 			FileInputFormat.addInputPath(job, new Path(otherArgs[i]));
 		}
-		FileOutputFormat.setOutputPath(job, new Path(
-				otherArgs[otherArgs.length - 1]));
+		FileOutputFormat.setOutputPath(job, new Path(otherArgs[otherArgs.length - 1]));
 		System.exit(job.waitForCompletion(true) ? 0 : 1);
 	}
 

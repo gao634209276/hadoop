@@ -1,10 +1,9 @@
-package mapreduce.demo.nginxlog;
+package mapreduce.nginxlog.page;
 
 public class PageViewsParser {
 	/**
 	 * 根据logSession的输出数据加载PageViewsBean
-	 * 
-	 * */
+	 */
 	public PageViewsBean loadBean(String sessionContent) {
 
 		PageViewsBean pageViewsBean = new PageViewsBean();

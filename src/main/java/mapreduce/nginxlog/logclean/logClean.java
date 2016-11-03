@@ -1,15 +1,11 @@
-package mapreduce.demo.nginxlog;
+package mapreduce.nginxlog.logclean;
 
 import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
-import java.util.StringTokenizer;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Job;
@@ -17,10 +13,19 @@ import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 
+/**
+ * 使用Mapreduce清洗日志文件
+ * 当把日志文件中的数据拉取到HDFS文件系统后，使用Mapreduce程序去进行日志清洗
+ * <p>
+ * 第一步，先用Mapreduce过滤掉无效的数据
+ * 仅仅通过map端通过WebLogParser的parser对每条log解析,
+ * 其中将对应的数据信息组装为一个JavaBean类实例对象weblogbean
+ * map输出的key为WebLogParser的toString,value为null
+ */
 public class logClean {
 
-	public static class cleanMap extends
-			Mapper<Object, Text, Text, NullWritable> {
+
+	private static class cleanMap extends Mapper<Object, Text, Text, NullWritable> {
 
 		private NullWritable v = NullWritable.get();
 		private Text word = new Text();
@@ -45,28 +50,22 @@ public class logClean {
 	public static void main(String[] args) throws Exception {
 
 		Configuration conf = new Configuration();
-		conf.set("fs.defaultFS", "hdfs://ymhHadoop:9000");
+		// conf.set("fs.defaultFS", "hdfs://hadoop:9000");
 		Job job = Job.getInstance(conf);
 		job.setJarByClass(logClean.class);
 
-		// 指定本业务job要使用的mapper/Reducer业务类
 		job.setMapperClass(cleanMap.class);
-		// 指定mapper输出数据的kv类型
 		job.setMapOutputKeyClass(Text.class);
 		job.setMapOutputValueClass(NullWritable.class);
+		//job.setNumReduceTasks(0);
 
-		// 指定job的输入原始文件所在目录
-		Date curDate = new Date();
-		SimpleDateFormat sdf = new SimpleDateFormat("yy-MM-dd");
-		String dateStr = sdf.format(curDate);
-		FileInputFormat.setInputPaths(job, new Path("/flume/events/" + dateStr
-				+ "/*/*"));
+		String dateStr = new SimpleDateFormat("yy-MM-dd").format(new Date());
 
-		// 指定job的输出结果所在目录
-		FileOutputFormat.setOutputPath(job, new Path("/clickstream/cleandata/"
-				+ dateStr + "/"));
-		// 将job中配置的相关参数，以及job所用的java类所在的jar包，提交给yarn去运行
+		FileInputFormat.setInputPaths(job, new Path("file/log/flume" + dateStr + "/*/*"));
+		FileOutputFormat.setOutputPath(job, new Path("file/log/cleandata" + dateStr + "/"));
+
 		boolean res = job.waitForCompletion(true);
 		System.exit(res ? 0 : 1);
 	}
+
 }
