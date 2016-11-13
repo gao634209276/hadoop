@@ -41,13 +41,9 @@ public class ChainMapperReducer {
 			System.out.println("ChaintDataMapper2  Methond Invoked!!!");
 
 			if (value.get() > 100) {
-
 				context.write(key, value);
-
 			}
-
 		}
-
 	}
 
 	private static class ChaintDataMapper3 extends Mapper<Text, IntWritable, Text, IntWritable> {
