@@ -200,5 +200,4 @@ class MyMultipleSortingPartitioner extends Partitioner<IntMultiplePair, IntWrita
 		System.out.println("getPartition的值       " + (arg0.getFirst().hashCode() & Integer.MAX_VALUE) % arg2);
 		return (arg0.getFirst().hashCode() & Integer.MAX_VALUE) % arg2;
 	}
-
 }
