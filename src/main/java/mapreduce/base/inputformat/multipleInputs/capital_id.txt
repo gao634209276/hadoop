@@ -1,0 +1,49 @@
+1.输入
+	file_1.txt
+		编号tab国家名
+	file_2.txt
+		国家名tab首都名
+
+2.处理过程
+	MapA.class 处理file_1.txt
+	MapB.class 处理file_2.txt
+	Reduce.class处理最后结果，将国家名、编号和首都格式化为："ID=%s\tcountry=%s\tcapital=%s"
+
+3.输出结果：
+	------------------------------
+	Bhutan	ID=2	name=Bhutan	capital=Thimphu
+	Burma	ID=3	name=Burma	capital=Rangoon
+	China	ID=1	name=China	capital=BeiJing
+	India	ID=4	name=India	capital=New Delhi
+	Laos	ID=5	name=Laos	capital=Vientiane
+	----------------------------------------------
+	
+4. 自定义数据类型需要默认无参构造函数
+	datatype需要无参构造函数构建, 然后使用read方法来设置各个成员变量
+	Implementations typically implement a static read(DataInput) method which constructs a new instance,
+	calls readFields(DataInput) and returns the instance.
+
+Example:
+
+         public class MyWritable implements Writable {
+           // Some data     
+           private int counter;
+           private long timestamp;
+           
+           public void write(DataOutput out) throws IOException {
+             out.writeInt(counter);
+             out.writeLong(timestamp);
+           }
+           
+           public void readFields(DataInput in) throws IOException {
+             counter = in.readInt();
+             timestamp = in.readLong();
+           }
+           
+           public static MyWritable read(DataInput in) throws IOException {
+             MyWritable w = new MyWritable();
+             w.readFields(in);
+             return w;
+           }
+         }
+     

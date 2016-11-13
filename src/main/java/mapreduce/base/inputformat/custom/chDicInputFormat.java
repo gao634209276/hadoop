@@ -1,4 +1,4 @@
-package mapreduce.base.inputformat;
+package mapreduce.base.inputformat.custom;
 
 
 import org.apache.hadoop.fs.FileSystem;

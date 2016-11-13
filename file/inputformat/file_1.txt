@@ -1,0 +1,5 @@
+1	China
+2	Bhutan
+3	Burma
+4	India
+5	Laos

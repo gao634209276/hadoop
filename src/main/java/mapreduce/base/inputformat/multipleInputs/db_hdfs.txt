@@ -1,0 +1,2 @@
+MultipleInputs处理多输入源，本例子包括 windows上的MySQL数据库数据和hdfs上的文本数据。
+写的比较简单，这是一个没有reduce的mapreduce，仅仅强调连接多输入源，读出数据：

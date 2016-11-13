@@ -23,7 +23,7 @@ public class TopKMapReduceV2 {
 	private static class TopKMapper extends Mapper<LongWritable, Text, LongWritable, NullWritable> {
 		public static final int KEY = 3;
 		// map key set
-		TreeSet<Long> topSet = new TreeSet<>();
+		TreeSet<Long> topSet = new TreeSet<Long>();
 
 		@Override
 		public void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {

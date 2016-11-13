@@ -72,8 +72,7 @@ public class Avg {
 		 * map对每行记录过滤并解析为:name score的格式
 		 */
 		@Override
-		protected void map(LongWritable key, Text value, Context context)
-				throws IOException, InterruptedException {
+		protected void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
 
 			String line = value.toString();
 

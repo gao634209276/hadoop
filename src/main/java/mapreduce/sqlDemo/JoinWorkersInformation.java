@@ -35,9 +35,7 @@ public class JoinWorkersInformation {
 				department.setDepartmentNo(data[0]);
 				department.setDepartmentName(data[1]);
 				department.setFlag(0);
-				context.write(
-						new LongWritable(Long.valueOf(department
-								.getDepartmentNo())), department);
+				context.write(new LongWritable(Long.valueOf(department.getDepartmentNo())), department);
 			} else { // worker
 
 				WorkerInformation worker = new WorkerInformation();
@@ -45,10 +43,7 @@ public class JoinWorkersInformation {
 				worker.setWorkerName(data[1]);
 				worker.setDepartmentNo(data[7]);
 				worker.setFlag(1);
-				context.write(
-						new LongWritable(Long.valueOf(worker.getDepartmentNo())),
-						worker);
-
+				context.write(new LongWritable(Long.valueOf(worker.getDepartmentNo())), worker);
 			}
 
 		}
@@ -59,7 +54,7 @@ public class JoinWorkersInformation {
 			Reducer<LongWritable, WorkerInformation, LongWritable, Text> {
 
 		public void reduce(Text key, Iterable<WorkerInformation> values,
-				Context context) throws IOException, InterruptedException {
+		                   Context context) throws IOException, InterruptedException {
 			System.out.println("Reduce Methond Invoked!!!");
 			LongWritable resultKey = new LongWritable(0);
 			Text resultValue = new Text();
@@ -131,7 +126,7 @@ class WorkerInformation implements WritableComparable {
 	}
 
 	public WorkerInformation(String workerNo, String workerName,
-			String departmentNo, String departmentName, int flag) {
+	                         String departmentNo, String departmentName, int flag) {
 		super();
 		this.workerNo = workerNo;
 		this.workerName = workerName;

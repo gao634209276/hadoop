@@ -1,0 +1,5 @@
+China	BeiJing
+Bhutan	Thimphu
+Burma	Rangoon 
+India	New Delhi
+Laos	Vientiane
