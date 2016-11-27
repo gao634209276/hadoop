@@ -1,4 +1,4 @@
-package appmaster;
+package app;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.mapreduce.v2.app.job.event.JobEvent;

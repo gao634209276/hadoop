@@ -1,0 +1,120 @@
+服务库和事件库介绍
+使用示例
+截图预览
+2.服务库和事件库介绍
+2.1服务库
+	YARN对于生命周期较长的对象使用服务的对象模型进行管理，主要特点如下：
+	用于被服务化的对象包含4个状态，他们分别是：被创建、已初始化、已启动和已停止。源代码地址在 org.apache.hadoop.service 的 Service 接口中，内容如下所示：
+		public enum STATE {
+			/** Constructed but not initialized */
+			NOTINITED(0, "NOTINITED"),
+
+			/** Initialized but not started or stopped */
+			INITED(1, "INITED"),
+
+			/** started and not stopped */
+			STARTED(2, "STARTED"),
+
+			/** stopped. No further state transitions are permitted */
+			STOPPED(3, "STOPPED");
+
+			/**
+			 * An integer value for use in array lookup and JMX interfaces.
+			 * Although {@link Enum#ordinal()} could do this, explicitly
+			 * identify the numbers gives more stability guarantees over time.
+			 */
+			private final int value;
+
+			/**
+			 * A name of the state that can be used in messages
+			 */
+			private final String statename;
+
+			private STATE(int value, String name) {
+			  this.value = value;
+			  this.statename = name;
+			}
+
+			/**
+			 * Get the integer value of a state
+			 * @return the numeric value of the state
+			 */
+			public int getValue() {
+			  return value;
+			}
+
+			/**
+			 * Get the name of a state
+			 * @return the state's name
+			 */
+			@Override
+			public String toString() {
+			  return statename;
+			}
+		  }
+
+		public abstract class AbstractService implements Service {
+
+		  // ......
+
+		}
+
+	通过阅读代码，我们可以看出，服务的对象它实现了接口Service，并定义了最基本的服务状态：创建、初始化、启动以及停止。对于 AbstractService 类来说，它实现了 Service 接口。
+	任何服务状态的变化都可以触发其他的动作，例如：
+
+		public void start() {
+			if (isInState(STATE.STARTED)) {
+			  return;
+			}
+			//enter the started state
+			synchronized (stateChangeLock) {
+			  if (stateModel.enterState(STATE.STARTED) != STATE.STARTED) {
+				try {
+				  startTime = System.currentTimeMillis();
+				  serviceStart();
+				  if (isInState(STATE.STARTED)) {
+					//if the service started (and isn't now in a later state), notify
+					if (LOG.isDebugEnabled()) {
+					  LOG.debug("Service " + getName() + " is started");
+					}
+					notifyListeners();
+				  }
+				} catch (Exception e) {
+				  noteFailure(e);
+				  ServiceOperations.stopQuietly(LOG, this);
+				  throw ServiceStateException.convert(e);
+				}
+			  }
+			}
+		  }
+
+	这里，我们会去触发一个监听动作，全局监听状态的改变，异常的捕捉监听等。
+	可以通过组合的方式进行服务组合，这样做的好处是便于统一去管理：在 YARN 中，如果是非组合服务，可以直接继承 AbstractService 类，否则需继承 CompositeService。
+
+2.2事件库
+	在 YARN 中，核心服务其本质就是一个中央异步调度器，包含有ResourceManager、 NodeManager、MRAppMaster等内容，YARN 事件与事件处理器的关系在
+	org.apache.hadoop.yarn.event  中。在使用 YARN 事件库的时候，需要先定义一个中央异步调度器 AsyncDispatcher，它负责事件的处理与转发，然后我们根据实际业务需求定义一系列事件 Event 与事件处理器 EventHandler，并将事件注册到中央异步调度器中用于完成事件统一管理和应用调度。流程如下图所示：
+		Event,EventHandler--注册-->AsyncDispatcher--处理并转发-->AbstractService
+
+3.使用示例
+　　接下来，我们编写示例代码，去代码中理解这部分流程。
+    首先是 JMRAppMaster 类：
+
+
+5.总结
+	在编写这部分流程代码时，可以参考 Hadoop YARN 部分的工程源码，通过运行调试代码，掌握对事件库和服务库的流程，以及它们的工作机制。另外，在编写的过程当中，最好将源码的文件引入到自己的工程，不要单独使用 JAR 包的方式导入，由于我们是独立运行某个模块，需要改动源代码的函数访问权限，若是直接引入 JAR 包地址，会导致函数修饰权限问题而不能运行，这里大家在运行调试的时候注意即可。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
