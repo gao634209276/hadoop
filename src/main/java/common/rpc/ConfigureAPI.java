@@ -2,7 +2,7 @@ package common.rpc;
 
 /**
  * 本工程使用的是Hadoop-2.6.0版本，这里CaculateService接口需要加入注解，来声明版本号
- * @Note Defined rpc info
+ * Defined rpc info
  */
 public class ConfigureAPI {
 

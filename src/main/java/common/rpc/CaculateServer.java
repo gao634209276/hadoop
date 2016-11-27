@@ -12,7 +12,7 @@ import org.slf4j.Logger;
 /**
  * 注意，在Hadoop V2版本中，获取RPC下的Server对象不能在使用RPC.getServer()方法了，
  * 该方法已被移除，取而代之的是使用Builder方法来构建新的Server对象。
- * @Note Server Main
+ * Server Main
  */
 public class CaculateServer {
 

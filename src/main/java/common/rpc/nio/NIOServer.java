@@ -15,9 +15,7 @@ import org.slf4j.LoggerFactory;
 
 
 /**
- * @Date May 8, 2015
- * @Author dengjie
- * @Note Defined nio server
+ * Defined nio server
  */
 public class NIOServer {
 

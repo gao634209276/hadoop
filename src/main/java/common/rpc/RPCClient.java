@@ -17,7 +17,7 @@ public class RPCClient {
 		InetSocketAddress addr = new InetSocketAddress("127.0.0.1", CaculateServer.IPC_PORT);
 		try {
 			RPC.getProtocolVersion(CaculateService.class);
-			CaculateService service = (CaculateService) RPC.getProxy(CaculateService.class,
+			CaculateService service = RPC.getProxy(CaculateService.class,
 					RPC.getProtocolVersion(CaculateService.class), addr, new Configuration());
 			int add = service.add(new IntWritable(2), new IntWritable(3)).get();
 			int sub = service.sub(new IntWritable(5), new IntWritable(2)).get();

@@ -1,5 +1,14 @@
 package common.rpc;
-/*public class StatQueryServiceImpl implements StatQueryService.Iface {
+
+
+import org.apache.thrift.TException;
+
+import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
+
+
+public class StatQueryServiceImpl implements StatQueryService.Iface {
 
 	public Map<String, String> queryDayKPI(String beginDate, String endDate, String kpiCode) throws TException {
 		return null;
@@ -7,7 +16,7 @@ package common.rpc;
 
 	public Map<String, String> queryConditionDayKPI(String beginDate, String endDate, String kpiCode, String userName,
 	                                                int areaId, String type, String fashion) throws TException {
-		Map<String, String> res = new HashMap<String, String>();
+/*		Map<String, String> res = new HashMap<String, String>();
 		ReportParam param = new ReportParam();
 		param.setBeginDate(beginDate + "");
 		param.setEndDate(endDate + "");
@@ -28,11 +37,12 @@ package common.rpc;
 		res.put(ConfigureAPI.RESMAPKEY.TITLE, title.toString());
 		res.put(ConfigureAPI.RESMAPKEY.TABLEAMOUNT, tableAmount.toString());
 		res.put(ConfigureAPI.RESMAPKEY.TABLEAVG, tableAvgTime.toString());
-		return res;
+		return res;*/
+		return null;
 	}
 
 	public Map<String, String> queryDetail(String beginDate, String endDate, String userName) throws TException {
 		return null;
 	}
 
-}*/
+}
