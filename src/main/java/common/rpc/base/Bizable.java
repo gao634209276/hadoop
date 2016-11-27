@@ -1,4 +1,4 @@
-package common.rpc;
+package common.rpc.base;
 
 public interface Bizable {
 

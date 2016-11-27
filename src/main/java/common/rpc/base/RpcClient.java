@@ -1,4 +1,4 @@
-package common.rpc;
+package common.rpc.base;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;

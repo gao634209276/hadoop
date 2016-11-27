@@ -1,0 +1,100 @@
+http://blog.csdn.net/jjzhk/article/category/1874959
+Yarn源代码分析之旅---总体架构---概述与总体架构
+Yarn源代码分析之旅---基础库---RPC
+Yarn源代码分析之旅---基础库---服务库
+Yarn源代码分析之旅---基础库---事件驱动
+Yarn源代码分析之旅---基础库---状态转换
+Yarn源代码分析之旅---ResourceManager---概述及架构
+Yarn源代码分析之旅---ResourceManager---用户交互之ApplicationClientProtocal与ClientRMService
+Yarn源代码分析之旅---ResourceManager---用户交互之ResourceManagerAdministrationProtocol与AdminService
+Yarn源代码分析之旅---ResourceManager---用户交互之WebApp
+Yarn源代码分析之旅---ResourceManager---NM管理之MNLivelinessMonitor
+Yarn源代码分析之旅---ResourceManager---NM管理之ResourceTrackerProtocol与ResourceTrackerService
+Yarn源代码分析之旅---ResourceManager---NM管理之NodeListManager
+Yarn源代码分析之旅---ResourceManager---AM管理之AMLivelinessMonitor
+Yarn源代码分析之旅---ResourceManager---AM管理之ApplicationMasterLauncher
+Yarn源代码分析之旅---ResourceManager---AM管理之ApplicationMasterService
+Yarn源代码分析之旅---ResourceManager---Application管理
+Yarn源代码分析之旅---ResourceManager---状态机及转换
+Yarn源代码分析之旅---ResourceManager---安全管理
+Yarn源代码分析之旅---ResourceManager---资源管理（ResourceScheduler）
+Yarn源代码分析之旅---ResourceManager---资源管理（ResourceScheduler）
+Yarn源代码分析之旅---ResourceManager---资源管理（ResourceScheduler）
+Yarn源代码分析之旅---ResourceManager---资源管理（ResourceScheduler）
+Yarn源代码分析之旅---ResourceManager---资源管理（ResourceScheduler）
+Yarn源代码分析之旅---NodeManager---启动与注册
+Yarn源代码分析之旅---NodeManager---健康检查
+Yarn源代码分析之旅---NodeManager---安全管理
+Yarn源代码分析之旅---NodeManager---Container管理之RPC
+Yarn源代码分析之旅---NodeManager---Container管理之资源本地化
+Yarn源代码分析之旅---NodeManager---Container管理之启动与运行
+Yarn源代码分析之旅---NodeManager---Container管理之Container监控
+Yarn源代码分析之旅---NodeManager---Container管理之附加服务
+Yarn源代码分析之旅---NodeManager---目录管理
+Yarn源代码分析之旅---NodeManager---状态机及转换
+Yarn源代码分析之旅---NodeManager---资源下载与本地化
+Yarn源代码分析之旅---NodeManager---总结
+
+Yarn的基本组成结构
+	ResourceManager是Master上一个独立运行的进程，负责集群统一的资源管理、调度、分配等等；
+	NodeManager是Slave上一个独立运行的进程，负责上报节点的状态；
+	App Master和Container是运行在Slave上的组件，
+	Container是yarn中分配资源的一个单位，包涵内存、CPU等等资源，yarn以Container为单位分配资源。
+
+	Client向ResourceManager提交的每一个应用程序都必须有一个Application Master，
+	它经过ResourceManager分配资源后，运行于某一个Slave节点的Container中，
+	具体做事情的Task，同样也运行与某一个Slave节点的Container中。
+	RM，NM，AM乃至普通的Container之间的通信，都是用RPC机制。
+
+Yarn详细架构设计
+	下面这个图是我参考了一些资料之后，自己画出的，请看：
+	http://img.blog.csdn.net/20140126060442453?watermark/2/text/aHR0cDovL2Jsb2cuY3Nkbi5uZXQvamp6aGs=/font/5a6L5L2T/fontsize/400/fill/I0JBQkFCMA==/dissolve/70/gravity/Center
+
+	分别进行介绍，所有的线条都是RPC协议，Client和Admin都是yarn系统外的，
+	Client是用户，他可以向yarn系统提交新的应用，
+	Admin是yarn的管理员，它可以通过命令行来操作和管理yarn系统；
+	RM(ResourceManager，以后的文章都简称RM)负责管理调度资源，
+	NM(NodeManager，以后的文章都简称NM)负责管理Slave节点，并且定时向RM报告自己的状态，集群中有很多Slave节点。
+	AMS(ApplicationMaste，以后的文章都简称AM)负责单个应用的资源再分配
+	（从RM申请到资源以后，具体在分配给应用程序的任务）以及定时向RM汇报应用程序的状态。
+	AMS也是yarn系统外的，每个提交的应用程序都需要自己去实现一个AM。
+	大家可能会迷惑为什么ApplicationMasterProtocol和ContainerManagerProtocol在yarn系统中都已经实现了，为什么是虚线？
+	的确这两个RPC协议都已经实现了，不过在AMS中需要自己去调用，
+	比如ApplicationMasterProtocol协议，仅仅定义了register，stop和allocate接口，没有实现任何心跳的代码，
+	那就需要AM自己在代码里重新开线程自己定期调用allocate去汇报自己的情况。
+	RMClientProtocol和TaskUmbilicalProtocol是两个在MRV2的应用程序中自己实现的RPC，
+	所以严格的来说也是在yarn系统之外的，因为MRV2已经是一个运行在yarn平台上的应用，从这点来看，yarn越来越像一个云操作系统了。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
