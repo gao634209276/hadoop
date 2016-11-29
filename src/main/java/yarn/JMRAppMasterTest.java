@@ -1,9 +1,4 @@
-package app;
-
-import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.mapreduce.v2.app.job.event.JobEvent;
-import org.apache.hadoop.mapreduce.v2.app.job.event.JobEventType;
-import org.apache.hadoop.yarn.conf.YarnConfiguration;
+package yarn;
 
 
 /**
