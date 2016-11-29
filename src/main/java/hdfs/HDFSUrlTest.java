@@ -29,8 +29,9 @@ public class HDFSUrlTest {
 			// 将文件内容打印到控制台--read()
 			IOUtils.copyBytes(in, System.out, 4096, false);
 		} finally {
-			//close()
+			// close()
 			IOUtils.closeStream(in);
 		}
 
 	}
+}

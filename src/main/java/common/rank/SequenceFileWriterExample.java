@@ -13,7 +13,7 @@ public class SequenceFileWriterExample {
 	
 	public static void main(String[] args) {
 	
-		String intputDir = args[0];
+/*		String intputDir = args[0];
 		Path outPath = new Path(args[1]);
 		String compressionType = args[2];
 		Configuration conf = new Configuration();
@@ -32,6 +32,6 @@ public class SequenceFileWriterExample {
 			writer.append(key,value);
 			
 		}
-		writer.close();
+		writer.close();*/
 	}
 }
