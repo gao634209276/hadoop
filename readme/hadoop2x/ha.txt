@@ -1,0 +1,138 @@
+http://www.tuicool.com/articles/eIBB3a
+NameNode主从节点同步操作日志达到主从节点元数据一致
+NFS-->QJM(Qurom Journal Manager)
+Epoch:
+由主节点在启动及其切换为主的时候分配,每次操作JN节点均会检查该值,类似zookeeper中的zxid，此时主NameNode类似zookeeper中的leader，JN节点类似ZK中的Follower
+JournalNod
+QJM存储段进程，提供日志读写，存储，修复等服务
+QJM :Qurom Journal Manager
+startLogSegment
+开始一个新的日志段,该日志段状态为 接收 写入日志的状态
+finalizeLogSegment
+将文件由正在写入日志的状态转化为不接收写日志的状态
+recoverUnfinalizedSegments
+主从切换等情况下，恢复没有转换为finalized状态的日志
+journalId
+日志ID，由配置指定，如qjournal://g42:8485;g35:8485;uhp9:8485/geminifs，则其中的geminifs即为journalId
+设计方案
+QJM通过(Active写,Standby读)于多个存储节点的EditLog达到高可用性,一致性算法(n/2+1)
+主节点flush-->RPC同时向N个JN服务异步写日志-->N/2+1个节点返回成功-->写操作成功
+返回失败节点-->主节点标记,不会再写日志-->主节点调用滚动日志操作时该JN节点恢复正常-->
+主节点再次写日志-->主节点保证分配txid的连续性-->JN节点检查txid连续性-->不连续报错/连续则写入日志文件
+
+读日志机制
+1、  选择日志文件，建立输入流
+从节点触发读日志-->遍历出所有还没有消化的日志文件,过滤inprocess状态的文件-->对于每个JN节点上的日志文件，均按照txid从小到大进行排序放入一个集合-->再将每个JN节点间相同的日志文件进行归类为一组（组内日志会检查fisrtTxid是否相等，及其lastTxid是否相等）；每个组之间再按照txid从小到大进行排序，这样方便从节点按照txid顺序消化日志；同时也会判断每个组之间txid是否连续。
+ 2、  消化日志
+准备好输入流以后，开始消化日志，从节点按照txid先后顺序从每个日志组里面消化日志。在每个日志组里面，首先会检查起始txid是否正确，如果正确，从节点先消化第一个日志文件，如果消化第一个日志文件失败则消化第二个日志文件，以此类推，如果日志组内文件遍历完还没有找到需要的日志，则该日志消化失败，消化每个日志的如果消化的上一个txid等于该日志文件的lastTxid，则该日志文件消化结束。
+
+日志恢复
+在从节点切换为主节点的过程中，会进行最近的日志段状态检查，如果没有转换为finalized状态会将其转换为该状态，日志恢复就处于该过程当中。
+1.触发条件
+     跟其他一些数据恢复方案不同，QJM并非每次写日志文件出现异常均恢复，而是从切换为主的情况下进行最新的一个日志文件的数据一致性检查，然后决定是否触发数据修复流程，之所以这样实现我想有如下原因：
+在开始一个新的edits文件前，HDFS会确保之前最新的日志文件已经由inprocess状态转化为finalized状态，同时QJM每次操作有N/2+1个节点返回成功才算成功，因此除了最新日志文件前，之前老的日志文件是finalized状态，且是高可用的；仅最新的日志文件可能由于主节点服务异常或者QJM某个进程异常导致日志没有正常转换为finalized状态，因此在从切换为主的时候需要恢复处理；
+.2.恢复流程
+
+在日志恢复的过程中，需要经历准备恢复（prepareRecovery），接受恢复（ acceptRecovery ）两个阶段。
+2.3.2.1 .prepareRecovery
+
+该操作向JN端发送RPC请求，查询需要恢复的日志段文件是否存在，如果存在则判断日志段文件状态（inprocess或finalized），同时也会返回epoch编号，NameNode根据返回的查询信息通过修复算法选择修复的源节点，准备进行数据修复。
+2.3.2.2.acceptRecovery
+
+计算获得源节点后，NameNode会向JN端发送恢复操作，JN节点根据接收到的RPC恢复请求，判断当前节点是否需要进行日志修复，如果需要进行修复，则通过doGet方式到源节点下载需要恢复的目标日志文件。下载过程中，先将下载的文件放到临时目录（tmp）目录下，下载完成后进行md5校验，检查是否有数据丢失，数据检查通过再将下载的文件放置到工作目录(current)下,这样数据恢复完成。
+
+在JN节点执行该方法中，有两个问题需要考虑：
+
+1、如果在JN节点下载日志的文件时候，源节点连接不通，会抛异常，如果有多个JN节点可以作为源节点，在NameNode调用JN节点的acceptRecovery方法是，可以考虑返回URL数组而不是单个URL，这样一个URL不能连接还可以尝试连接另外的JN节点进行文件下载；
+
+2、有可能某JN节点下载日志文件的时候，自己进程挂掉，在QJM中，有对该问题的处理方式；
+
+开始接触的时候我担心是否可能有文件既在被从节点读取，又在恢复该日志文件，通过分析后发现不会有何种情况，因为从节点消化的日志均是finalized状态的文件而不是inprocess状态的文件。
+
+
+
+
+
+设计:
+NameNode/DFSZKFailoverController: hadoop1,hadoop2,slave1,slave2
+DataNode/ResourceManager/NodeManager: hadoop
+QuorumPeerMain/JournalNode: hadoop,hadoop1,hadoop2
+
+
+1.QuorumPeerMain
+hadoop,hadoop1,hadoop2
+zkServer.sh start
+zkServer.sh status
+
+hadoop1,slave1
+bin/hdfs zkcf -formatZK
+
+2.JournalNode,NameNode
+sbin/hadoop-daemon.sh start journalnode
+bin/hdfs namenode -format -clusterId hadoopHA
+sbin/hadoop-daemon.sh start namenode
+
+3.NameNode
+bin/hdfs namenode -bootstrapStandby
+sbin/hadoop-daemon.sh start namenode
+
+4.DataNode
+sbin/hadoop-daemons.sh start datanode
+
+5.DFSZKFailoverController
+sbin/hadoop-daemon.sh start zkfc
+
+6.ResourceManager/NodeManager
+sbin/start-yarn.sh
+
+[hadoop@hadoop1 hadoop-2.7.2]$ sbin/start-dfs.sh
+16/08/28 23:15:58 WARN util.NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+Starting namenodes on [hadoop1 hadoop2 slave1 slave2]
+hadoop1: starting namenode, logging to /opt/modules/hadoop-2.7.2/logs/hadoop-hadoop-namenode-hadoop1.out
+slave1: starting namenode, logging to /opt/modules/hadoop-2.7.2/logs/hadoop-hadoop-namenode-slave1.out
+slave2: starting namenode, logging to /opt/modules/hadoop-2.7.2/logs/hadoop-hadoop-namenode-slave2.out
+hadoop2: starting namenode, logging to /opt/modules/hadoop-2.7.2/logs/hadoop-hadoop-namenode-hadoop2.out
+hadoop: starting datanode, logging to /opt/modules/hadoop-2.7.2/logs/hadoop-hadoop-datanode-hadoop.out
+Starting journal nodes [hadoop hadoop1 hadoop2]
+hadoop1: starting journalnode, logging to /opt/modules/hadoop-2.7.2/logs/hadoop-hadoop-journalnode-hadoop1.out
+hadoop2: starting journalnode, logging to /opt/modules/hadoop-2.7.2/logs/hadoop-hadoop-journalnode-hadoop2.out
+hadoop: starting journalnode, logging to /opt/modules/hadoop-2.7.2/logs/hadoop-hadoop-journalnode-hadoop.out
+16/08/28 23:16:14 WARN util.NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+Starting ZK Failover Controllers on NN hosts [hadoop1 hadoop2 slave1 slave2]
+slave2: starting zkfc, logging to /opt/modules/hadoop-2.7.2/logs/hadoop-hadoop-zkfc-slave2.out
+slave1: starting zkfc, logging to /opt/modules/hadoop-2.7.2/logs/hadoop-hadoop-zkfc-slave1.out
+hadoop1: starting zkfc, logging to /opt/modules/hadoop-2.7.2/logs/hadoop-hadoop-zkfc-hadoop1.out
+hadoop2: starting zkfc, logging to /opt/modules/hadoop-2.7.2/logs/hadoop-hadoop-zkfc-hadoop2.out
+[hadoop@hadoop1 hadoop-2.7.2]$ sbin/stop-dfs.sh
+16/08/28 23:17:19 WARN util.NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+Stopping namenodes on [hadoop1 hadoop2 slave1 slave2]
+hadoop1: stopping namenode
+slave1: stopping namenode
+hadoop2: stopping namenode
+slave2: stopping namenode
+hadoop: stopping datanode
+Stopping journal nodes [hadoop hadoop1 hadoop2]
+hadoop1: stopping journalnode
+hadoop2: stopping journalnode
+hadoop: stopping journalnode
+16/08/28 23:17:38 WARN util.NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+Stopping ZK Failover Controllers on NN hosts [hadoop1 hadoop2 slave1 slave2]
+slave1: stopping zkfc
+hadoop1: stopping zkfc
+slave2: stopping zkfc
+hadoop2: stopping zkfc
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

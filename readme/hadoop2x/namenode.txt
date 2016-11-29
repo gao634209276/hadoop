@@ -1,0 +1,34 @@
+Namenode始终在内存中保存netedata,用于处理"读请求"
+namenode会首先写editlog到磁盘,成功后,才会修改内存,并想客户端返回
+hadoop会维护一个fsimage文件,也就是namenode中metedata的镜像文件,但fsimage不会随时与namenode内存中的metedata保存一直,每隔一段时间通过合并edits和fsimage来更行内容.SecondaryNamenode就是用来合并fsimage和edits文件,来更新Namenode的metedata.
+
+Ha是一个解决方案,但不支持热备,配置即可
+执行过程:从NameNode上下载元数据信息(fsimage,edits),然后把二者合并,合并新的fsimage,在本地保存,并将其推送到Namenode,替换旧的fsimage.
+
+1.secondary通知namenode切换edits文件
+2.secondary从namenode获取fsimage和edits(通过http)
+3.secondary将fsimage载入内存,然后开始合并edits
+4.secondary将新的fsimage发回给namenode
+5.namenode用新的fsimage替换就的fsimage
+
+client(操作hfds)-->NameNode(接受写请求,提供DN给client)-->Client(向DN中写)-->DataNode(DN进行保存)-->当前edits +1条记录 ,当前MetaData +1条记录,fsimage不会改变-->当满足一定条件后(时间:3600s即一个小时,fs.checkpoint.size:64M),SNN获取edits和fsimage,进行合并,同时NN中的切换新的edit
+
+DataNode
+提供真是文件数据的存储服务
+文件块(block),最基本的存储单位,对于文件内容而言,一个文件的长度大小是size,那么从文件的0偏移开始,按照固定的大小,顺序对文件进行划分并编号,话费好的每一个块称为一个Block,HDFS默认Block大小为128M
+不同于普通文件系统的是,HDFS中,如果一个文件小于一个数据块的大小,并不占用整个数据库存储空间
+Replication:默认3个:dfs.replication
+
+
+RPC--远程过程调用协议,他是一种通过网路从远程计算机程序上请求服务,而不需要了解底层网络结束的协议.RPC协议假定某些传输协议的存在,如TCP或UDP,为通信程序之间携带信息数据.在OSI网络通信模型中,RPC跨越了传输层和应用层.RPC使得开发包括网络分布多程序在内的应用程序更加容易.
+RPC采用客户机/服务器模型,请求程序就是一个客户机,而服务提供程序就是一个服务器.
+	首先,客户机调用进程发送一个有进程参数的调用信息到服务进程,然后等待应答信息.
+	在服务器端,服务器获得进程参数,计算结果,发送答复信息,然后等待下一个调用信息,
+	最后,客户端调用进程接受答复信息,获得进程结果,然后调用执行继续进行.
+hadoop的整个体系结构就是构建在RPC之上的.
+
+MR
+MR是一种分布式计算模型,有Google提出,用于搜索领域,解决海联数据的计算问题.
+
+MR由两个阶段:Map和Reduce,用户需要实习那map()和reduce()两个函数,即可实现分布式计算,非常简单.
+这两个函数的形参是Key,Value对,表示函数的输入信息.

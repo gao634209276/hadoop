@@ -1,0 +1,405 @@
+1. 目录
+1	MyWordCount 处理过程详解	2
+1.1	Mapper分割	2
+1.2	map方法	2
+1.3	map端的排序	2
+1.4	Reducer端	3
+2	MapReduce工作原理	4
+源码详解Job提交过程	4
+2.1	获取Job配置信息以及Job初始化	5
+2.2	获取Namenodes	5
+2.3	检查输出说明	6
+2.4	获取maps个数和Job输入划分	7
+2.5	在JobCopy中设置分割后未提交的作业管理	8
+2.6	在JobCopy中设置已经提交的作业管理	9
+2.7	清空TokenReferral后把jobconf复制到HDFS	9
+2.8	真正的提交作业	9
+3	MR作业运行流程	10
+3.1	提交作业	11
+3.2	作业的初始化	11
+3.3	任务的分配	12
+3.4	作业的完成	12
+4	Map,Reduce任务中Shuffle和排序的过程	12
+4.1	Map端流程分析	12
+4.2	Reduce端流程分析	13
+5	Shuffle	14
+5.1	Map Shuffle Phase	14
+5.1.1	读取HDFS中的文件.每一行解析成一个<key,value>.每个键值对调用一次map函数,转换为新的<key,value>输出	14
+5.1.2	对<key,value>进行分区,默认为1个分区	15
+5.1.3	按照reduce分组排序	15
+5.1.4	对分组后的数据进行规约(combiner)	15
+5.2	Reduce Shuffle Phase	17
+5.2.1	Copy过程,	17
+5.2.2	Merge阶段.	17
+5.2.3	Reduce的输入文件.	17
+5.3	源代码跟踪查看Map Task和Reduce Task数目的个数	18
+
+1 MyWordCount 处理过程详解
+1.1 Mapper分割
+将文件分成splits,由于此时用的文件较小,所以每个文件为split,并将文件按行分割成<key,value>对,下图所示.这一步有MapReduce框架自动完成,齐总偏移量(即key值)包括了回撤所占的字符串(Windows/Linux环境不同)
+
+1.2 map方法
+将分割好的<key,value>对交给用户定义的map方法进行处理,生成新的<key,value>对,下图所示.
+
+1.3 map端的排序
+得到map方法输出的<key,value>对后,Mapper会将按照key值进行排序,并执行Combine过程,将key值相同的value值累加,得到Mapper的最终输出结果,下图所示:
+这个Combine过程在代码中设置如下:
+//2.设置Mapper和Reducer类
+	job.setMapperClass(MyMapper.class);
+	job.setCombinerClass(MyReducer.class);
+	job.setReducerClass(MyReducer.class);
+
+1.4 Reducer端
+Reducer先对从Mapper接收的数据进行排序,在交由用户自定义的reduce方法进行处理,得到新的<key,value>对,并作为WordCount的输出结果,下图所示
+
+
+
+2 MapReduce工作原理
+
+此图为Hadoop权威指南第六章MapReduce工作原理中的原图,通过权威指南:
+运行一个MapReduce作业:job.waitForCompletion(true),很简短,但幕后隐藏着大量的处理细节.
+整个过程如上图所示,在最上层,有4个独立的实体类.
+1. 客户端提交MapReduce作业
+2. jobtracker:	协调作业的运行.jobtracker是一个Java应用程序,它的主类是JobTracker.
+3. tasktracker:	运行作业后的任务.tasktracker是一个Java应用程序,它的主类是TaskTracker
+4. 分布式文件系统(一般为HDFS),用来在其他实体间共享作业文件.
+
+源码详解Job提交过程
+
+
+运行job,步骤1也就是waitForcompletion(true);源码(JobClient类中也就是上图的JobClient)可以得知,提交方法调用的是submit()其中的内部提交方法jobClient.submitJobInternal(conf),这是提交的核心实现部分.解析如下:
+通过return调用方法ugi.doAs(new PrivilegedExceptionAction<RunningJob>();此方法内的run()方法解析:
+
+1.5 获取Job配置信息以及Job初始化
+JobConf jobCopy = job;
+Path jobStagingArea = JobSubmissionFiles.getStagingDir(JobClient.this, jobCopy);
+拿到JobConf实例对象, jobStagingArea为job需要的jar包以及jobconf文件的中转区域路径.
+JobID jobId = jobSubmitClient.getNewJobId();
+        Path submitJobDir = new Path(jobStagingArea, jobId.toString());
+        jobCopy.set("mapreduce.job.dir", submitJobDir.toString());
+        JobStatus status = null;
+向jobtracker请求一个新的作业ID(通过调用JobTracker的getNewJobId())步骤2
+设置job提交路径submitJobDir:	包含job配置环境jobStagingArea和jobid,
+设置mapreduce运行job的路径mapreduce.job.dir为job提交路径submitJobDir.toString();
+
+
+初始化job状态JobStatus为null.
+然后进入try-catch块,这个区域为如何运行job的代码部分.
+         populateTokenCache(jobCopy, jobCopy.getCredentials());
+          copyAndConfigureFiles(jobCopy, submitJobDir);
+populateTokenCache复制作业资源文件步骤3开始
+将运行作业所需要的资源(包括作业JAR文件,配置文件和计算所得的输入划分);
+1.6 获取Namenodes
+          // get delegation token for the dir
+          TokenCache.obtainTokensForNamenodes(jobCopy.getCredentials(),
+                                              new Path [] {submitJobDir},
+                                              jobCopy);
+得到Namenodes的目录.
+
+          Path submitJobFile = JobSubmissionFiles.getJobConfPath(submitJobDir);
+          int reduces = jobCopy.getNumReduceTasks();
+          InetAddress ip = InetAddress.getLocalHost();
+通过submitJobDir得到提交job文件的路径submitJobFile;
+获取reduces任务的个数ReduceTasks.
+获取本地主机ip地址.
+  if (ip != null) {
+            job.setJobSubmitHostAddress(ip.getHostAddress());
+            job.setJobSubmitHostName(ip.getHostName());
+          }
+          JobContext context = new JobContext(jobCopy, jobId);
+设置提交job的主机IP地址和主机名.
+通过jobCopy和jobId构造一个job的上下文JobContext
+          }
+1.7 检查输出说明
+检查作业的输出说明(reduces个数).比如,如果没有指定输出目录或者它已经存在,作业就不会提交,并有错误返回给MapReduce程序.
+创建的reduce任务的数量由JobConf的mapred.reduce.tasks属性决定,它是用setNumReduceTasks()方法来设置的.然后调度器便创建这么多reduce任务来运行.任务在此时指定ID号.
+// Check the output specification
+          if (reduces == 0 ? jobCopy.getUseNewMapper() :
+            jobCopy.getUseNewReducer()) {
+            org.apache.hadoop.mapreduce.OutputFormat<?,?> output =
+              ReflectionUtils.newInstance(context.getOutputFormatClass(),
+                  jobCopy);
+            output.checkOutputSpecs(context);
+          } else {
+            jobCopy.getOutputFormat().checkOutputSpecs(fs, jobCopy);
+
+判断reduce任务个数,如果是0,仅仅使用Mapper,如果不是0,生成Reducer;
+检查在没有reduce任务的时候,设置output目录,通过job资源配置和job的上下文context,使用java反射方式创建并获取输出目录output(这里通过context获取到在Client中设置的输出如下图)
+
+然后根据上下文检查输出路径output. checkOutputSpecs(context)抽象方法对应方法实现内容为:
+    Path outDir = getOutputPath(job);
+    if (outDir == null) {
+      throw new InvalidJobConfException("Output directory not set.");
+    }
+从job上下文获取输出路径outDir,判断outDir,如果为空,抛出异常outdir没有设置也就是在程序当中的设置: FileOutputFormat.setOutputPath(job, new Path(args[1]));
+
+    if (outDir.getFileSystem(job.getConfiguration()).exists(outDir)) {
+      throw new FileAlreadyExistsException("Output directory " + outDir +
+                                           " already exists");
+    }
+然后判断输出路径outDir在HDFS中是否已经存在.HDFS通过job上下文获取到配置对象得到.如果HDFS中已经存在outDir,则抛出异常,Output directory已经存在.
+判断完以后,
+          jobCopy = (JobConf)context.getConfiguration();
+通过job上下文context获取配置信息,对job的jobConf对象jobCopy进行刷新.
+1.8 获取maps个数和Job输入划分
+步骤6计算作业的输入划分.如果划分无法计算,比如因为输入路径不存在,作业就不会被提交,并有错误返回给MapReduce程序.
+
+          // Create the splits for the job
+          FileSystem fs = submitJobDir.getFileSystem(jobCopy);
+          LOG.debug("Creating splits at " + fs.makeQualified(submitJobDir));
+          int maps = writeSplits(context, submitJobDir);
+          jobCopy.setNumMapTasks(maps);
+
+通过job提交路径submitJobDir和job配置信息jobCopy获取到HDFS
+日志调试输出:生成job分割.
+通过job上下文context和提交路径submitJobDir得到maps数量.查看获取方法writeSplits(context, submitJobDir)源码:
+JobConf jConf = (JobConf)job.getConfiguration();
+    int maps;
+    if (jConf.getUseNewMapper()) {
+      maps = writeNewSplits(job, jobSubmitDir);
+    } else {
+      maps = writeOldSplits(jConf, jobSubmitDir);
+    }
+    return maps;
+获取job配置信息,初始化maps
+判断通过job配置信息能否得到一个新的Mapper对象.
+如果能得到,通过writeNewSplits(job, jobSubmitDir)返回maps个数.
+如果不能,通过writeOldSplits(jConf, jobSubmitDir)返回maps个数
+再查看writeNewSplits(job, jobSubmitDir)内容:
+  List<InputSplit> splits = input.getSplits(job);
+查看input.getSplits(job)抽象方法的在FileInputFormart类的实现部分:
+
+回到run()方法接着看:
+
+T[] array = (T[]) splits.toArray(new InputSplit[splits.size()]);
+JobTracker接收到对其submitJob()方法的调用后,会把此调用放入一个内部的队列中,交由作业调度器进行调度,并对其进行初始化,初始化包括创建一个代表该正在运行的作业的对象,它封装任务的记录信息,以便跟踪任务的状态和进程(步骤5)
+
+int maps = writeSplits(context, submitJobDir);
+jobCopy.setNumMapTasks(maps);
+获取到maps数后,通过job配置信息和maps个数设置map任务MapTasks
+
+要创建运行任务列表,作业调度器首先从共享文件系统中获取JobClient已计算好的输入划分信息(步骤6). 然后为每个划分创建一个map任务.
+
+1.9 在JobCopy中设置分割后未提交的作业管理
+
+          // write "queue admins of the queue to which job is being submitted"
+          // to job file.
+          String queue = jobCopy.getQueueName();
+          AccessControlList acl = jobSubmitClient.getQueueAdmins(queue);
+          jobCopy.set(QueueManager.toFullPropertyName(queue,
+              QueueACL.ADMINISTER_JOBS.getAclName()), acl.getACLString());
+queue是一个有序的列表,通过jobCopy获取队列名称
+获取访问控制列表进行访问控制.
+
+1.10 在JobCopy中设置已经提交的作业管理
+// write "queue admins of the queue to which job is being submitted"
+          // to job file.
+          String queue = jobCopy.getQueueName();
+          AccessControlList acl = jobSubmitClient.getQueueAdmins(queue);
+          jobCopy.set(QueueManager.toFullPropertyName(queue,
+              QueueACL.ADMINISTER_JOBS.getAclName()), acl.getACLString());
+
+1.11 清空TokenReferral后把jobconf复制到HDFS
+// removing jobtoken referrals before copying the jobconf to HDFS
+          // as the tasks don't need this setting, actually they may break
+          // because of it if present as the referral will point to a
+          // different job.
+          TokenCache.cleanUpTokenReferral(jobCopy);
+
+          try {
+            jobCopy.writeXml(out);
+          } finally {
+            out.close();
+          }
+
+步骤3完成将job的所有配置jobconf输出到xml配置文件中去.也就是下图中的xml文件
+将运行作业所需要的资源复制到HDFS上,包括MapReduce程序打包的JAR文件,配置文件和客户端计算所得的输入划分信息,这些文件都存放在 jobtracker的文件系统中,jobtracker为该作业创建的文件夹名为作业的JobID;
+
+1.12 真正的提交作业
+         //
+          // Now, actually submit the job (using the submit name)
+          //
+          printTokens(jobId, jobCopy.getCredentials());
+          status = jobSubmitClient.submitJob(
+              jobId, submitJobDir.toString(), jobCopy.getCredentials());
+          JobProfile prof = jobSubmitClient.getJobProfile(jobId);
+          if (status != null && prof != null) {
+            return new NetworkedJob(status, prof, jobSubmitClient);
+          } else {
+            throw new IOException("Could not launch job");
+          }
+        } finally {
+          if (status == null) {
+            LOG.info("Cleaning up the staging area " + submitJobDir);
+            if (fs != null && submitJobDir != null)
+              fs.delete(submitJobDir, true);
+          }
+        }
+
+
+3 MR作业运行流程
+下面是<<Hadoop权威指南>>关于提交作业详解的的部分内容(添加个别解释和概括):
+
+1.13 提交作业
+JobClient的runJob()方法是用于新建JobClient实例和调用其submitJob()方法的简便方法.(图示第1步),提价作业后,runJob()每秒轮询作业的进度,如果发现与上一个记录不同,便把报告显示到控制台. 作业完成后,如果成功,就显示作业计数器.否则,导致作业失败的错误会被记录到控制台.
+JobClient的submitJob()方法所实现的作业提交过程如下.
+1. 向jobtracker请求一个新的作业ID(通过调用JobTracker的getNewJobId())步骤2
+2. 检查作业的输出说明.比如,如果没有指定输出目录或者它已经存在,作业就不会提交,并有错误返回给MapReduce程序.
+3. 计算作业的输入划分.如果划分无法计算,比如因为输入路径不存在,作业就不会被提交,并有错误返回给MapReduce程序.
+4. 将运行作业所需要的资源复制到HDFS上,包括MapReduce程序打包的JAR文件,配置文件和客户端计算所得的输入划分信息,这些文件都存放在 jobtracker的文件系统中,jobtracker专门为该作业创建的文件夹名为作业的JobID, 作业JAR的副本默认为10 个(这有mapred.submit.replication属性控制);
+输入划分信息告诉了JobTracker应该为这个作业启动多少个map任务等信息;也就是说tasktracker运行作业任务时,集群能为他们提供许多副本进行访问.(步骤3)
+5. 告诉jobtracker作业准备执行(通过调用JobTracker的submitJob()方法)(步骤4).
+1.14 作业的初始化
+JobTracker接收到作业后,会把此作业放入一个内部的队列中,交由作业调度器进行调度,并对其进行初始化,初始化包括创建一个代表该正在运行的作业的对象,它分装任务的记录信息,以便跟踪任务的状态和进程(步骤5);
+作业调度器首先从共享文件系统中获取JobClient已计算好的输入划分信息(步骤6) 创建运行任务列表. 然后为每个划分创建一个map任务.并将map任务分配给TaskTrack执行;
+针对map任务和reduce任务,tasktracker有固定数量的槽(槽是hadoop1.0中的概念slot:对资源的统称;而在Hadoop中的概念称之为container:容器,更加合理化).
+例如一个tasktracker可能可以同时运行两个map任务和两个reduce任务.(准确数量有tasktracker核的数量和内存大小来决定),默认调度器在处理reduce任务槽之前,会填满空闲的map任务槽,因此,如果tasktracker至少有一个空闲的map任务槽,jobtracker会为他们选择一个map任务,否则选择一个reduce任务.
+
+创建的reduce任务的数量有JobConf的mapred.reduce.tasks属性决定,它是用setNumReduceTasks()方法类设置的.然后调度器便创建这么多reduce任务来运行.任务在此时指定ID号.
+
+这里有个概念:数据本地化(Data-Local),意思是:将map任务分配给含有该map处理的数据块TaskTracker上,同时将程序JAR包复制到该TaskTracker上来运行,这个叫”运算移动,数据不移动”.而分配reduce任务时并不考虑数据本地化.
+
+1.15 任务的分配
+TaskTracker执行一个简单的循环,定期发送心跳(heartbeat)方法调用Jobtracker(也就是说每隔一段时间会给JobTracker发送一个心跳),心跳方法告诉jobtracker,tasktracker是否还存活;
+同时心跳也充当两者之间的消息通道,心跳方法也会携带者很多信息,比如当前map任完成的进度都能信息.
+tasktracker会指明它是否已经准备运行新的任务.如果是,jobtracker会为它分配一个任务,并使用心跳方法的返回值与tasktracker进行通信(步骤7).
+1.16 作业的完成
+当JobTracker收到作业的最后一个任务完成信息时,便把作业设置成”成功”.当JobClient查询状态时,它将得知任务已完成,便显示一条消息给用户.
+4 Map,Reduce任务中Shuffle和排序的过程
+
+
+
+1.17 Map端流程分析
+1. 每个输入分片会让一个map任务来处理,默认情况下,以HDFS的一个款的大小(默认64M)为一个分片,当然我们也可以设置块的大小.map输出的结果会暂且放在一个环形内存缓冲区中(该缓冲区的大小默认为为100M,由io.sort.mb属性控制),当然缓冲区快要溢出时(默认为缓冲区大小的80%,由io.sort.spill.percent属性控制),会在本地文件系统中创建一个溢出文件,将该缓冲区中的数据写入这个文件.
+
+2. 在写入磁盘之前,线程首先根据reduce任务的数目将数据划分为相同数目的分区,也就是一个reduce任务对应一个分区的数据.这样做事为了避免有些reduce任务分配到大量数据,而有些reduce任务却分到很少数据,甚至灭有分到数据的尴尬局面.其实分区就是对数据进行hash的过程.然后对每个分区的数据进行排序,如果此时设置了Combiner,将排序后的结果进行Combia操作,这样做的目的是让尽可能少的数据写入到磁盘.
+
+3. 当map任务输出最后一个记录时,可能会有很多的溢出文件,这时需要将这些文件合并.合并的过程中会不断地进行排序和combia操作,目前有两个:1.尽可能减少每次写入磁盘的数据量;2,计量减少下一复制阶段网络传输的数量.最后合并成了一个已分区且已排序的文件.为了减少网络传输的数据量,这里可以将数据压缩,只要将mapred.compress.map.out设置为true就可以了.
+数据压缩:Gzip,Lzo,snappy
+
+4. 将分区中的数据拷贝给相应的reduce任务.有人可能会问:分区中的数据怎么知道它对应的reduce是哪个呢?其实map任务一直和其父TaskTracker保持联系,而TaskTracker又一直和JobTracker保持心跳.所以JobTracker中保存了整个集群中的宏观信息.只要reduce任务向JobTracker获取对应的map输入位置就ok了.这里是maper端向reduce端拷贝数据,所以是map向JobTracker中获取reduce的位置.
+Shuffle意思是洗牌,一个map产生的数据,结果通过hash过程分区却分配给了不同的reduce任务,就是Shuffle的过程
+1.18 Reduce端流程分析
+1. Reduce会接收到不同map任务的数据,并且每个map传来的数据都是有序的.如果reduce端接收的数据量相当小,则直接存储在内存中(缓冲区大小由mapred.job.shuffle.input.buffer.percent属性控制,表示作用此用途的堆空间的百分比),如果数量超过了该缓冲区大小的一定比例(由mapred.job.shuffle.merge.percent决定),则对数据合并后溢写到磁盘中.
+2. 随着溢写文件的增多,后台线程会将他们合并成一个更大的有序的文件,这样做事为了给后面的合并节省时间.其实不管在map端还是reduce端,MapReduce都是反复的执行排序操作,合并操作.排序是hadoop的灵魂
+3. 合并的过程中会产生许多的中间文件(写入磁盘了),但MapReduce会让写入磁盘的数据尽可能少,并且最后一次合并的结果并没有写入磁盘,而是直接输入到reduce函数.
+5 Shuffle
+
+意思:洗牌或弄乱
+Collections.shuffle(List):随机地打乱参数list里的元素顺序.
+MapReduce里Shuffle过程:描述着数据从map task输出到reduce task输入的这段过程.
+1.19 Map Shuffle Phase
+
+每个map task都有一个内存缓冲区,存储着map 的输出结果,当缓冲区快慢的时候需要将缓冲区的数据以一个临时文件的方式存放到磁盘,当真个map task结束后再对磁盘中这个map task产生的所有临时文件做合并,生成最终的正式的文件,然后等待reduce task来拉数据.
+5.1.1 读取HDFS中的文件.每一行解析成一个<key,value>.每个键值对调用一次map函数,转换为新的<key,value>输出
+
+1. 在map task执行时,它是的输入数据来源于HDFS的block,当然在MapRedce概念中,map task只读取split. Split与block的对应关系可能是多对一,默认为一对一(片面的).在WordCount例子里,假设map的数据都是想”aaa”这样的字符串.
+5.1.2 对<key,value>进行分区,默认为1个分区
+
+2. 在经过mapper的运行后,我们得知mapper的输出是这样一个key/value对:key是”aaa’’, value是数值1. 因为当map端只做加1的操作,在reduce task里才去合并结果集.前面我们知道这个job有3个reduce task,到底当前的”aaa”应该交由那个reduce去做呢,是需要现在决定的.
+解析:
+MapReduce提供Partitioner接口,作用就是根据key或value及reduce的数量来决定当前的输出数据最终应该交由那个reduce task处理.默认对key hash后再以reduce task数量取模.默认的取模方式只是为了平均reduce的处理能力.如果用户自己对Partitioner有需求,可以定制并设置到job上.
+在例子中,”aaa’经过Partitioner后返回0,也就是这对值应当交由第一个reducer来处理.接下来,需要将数据写入内存缓冲区中,缓冲区的作用是批量收集map结果.减少磁盘IO的影响.我们的key/value对以及Partition的结果都会被写入缓冲区.当然写入之前,key与value值都会被序列化成字节数组.
+5.1.3 按照reduce分组排序
+3. 对不同的分区中的数据进行排序(按照key),分组,分组指的是相同key的value放到一个集合中.
+内存缓冲区是由大小限制的,默认是100MB.当map task的输出结果很多时,就可能回撑爆内存,所以需要在一定条件下将缓冲区中的数据临时写入磁盘,然后重新利用这款缓冲区.这个从内存忘磁盘写数据的过程被称为Spill,中文可译为溢写.溢写是由单独线程完成,不影响往缓冲区写map结果的线程.溢写线程时不应该阻止map的结果输出,所以整个缓冲区有个溢写的比例spill.percent.比例默认为0.8,也就是当缓冲区的数据达到阈值(buffer size * spill percent = 100MB * 0.8 = 80MB),溢写线程启动,锁定这80MB的内存,执行溢写过程.Map task的输出结果还可以忘剩下的20MB内存中写,互不影响
+当溢写线程启动后,需要对着80MB空间内的key做排序(Sort).排序是MapReduce模型默认的行为,这里的排序也是对序列化的字节做的排序.
+此处的分组就是下面第4条中的group.
+因为map task的输出是需要发送到不同的reduce端去,而内存缓冲区没有对将发送到相同的reduce端的数据做合并,那么这种合并应该是体现在磁盘文件中的.从官方图上也可以看到写到磁盘中的溢写文件是对不同的reduce端的数值做过合并.所以溢写过程一个很重要的细节在于,如果有很多个key/value对需要发送到某个reduce端去,那么需要将这些key/value值拼接到一块,减少与partition相关的索引记录.这个过程叫reduce也叫combine,但MapReduce的术语中,除reduce外,非正式地合并数据只能算作combine.
+如果client设置过Combiner,那么现在就是使用Combiner的时候了.将有相同key的key/value对的value加起来,减少溢写到磁盘的数据量.Conbiner会优化MapReduce中间结果,所以他在整个模型中会多次使用.
+5.1.4 对分组后的数据进行规约(combiner)
+Combiner 的输出是Reducer的输入,Combiner绝对不能改变最终的计算结果.所以Combiner只应该用于那种Reduce的输入key/value与输出key/value类型完全一致,且不影响最终结果的场景.比如累加,最大值等.Combiner的使用一定要慎重,祖国用好,它对job执行效率有帮助,反之影响reduce的最终结果.
+
+4. 每次溢写会在磁盘上生成一个溢写文件,如果map的输出结果很大,有对此这样的溢写发生,磁盘上相应的就会有多个溢写文件存在.当map task真正完成时,内存缓冲区中的数据也权益学到磁盘中形成一个溢写文件.最终磁盘中会至少有一个这样的溢写文件存在(如果map的输入结果很少,当map执行完成时,只会产生一个溢写文件),因为最终文件只有一个,所以需要将这些溢写文件归并到一起,这个过程就叫做Merge.Merge是一个动作,例如:”aaa”从某个map task读取过来的value是5,从另外一个map读取值为8,那么将”aaa”merge成group,结果是{“aaa”,[5,8…]}这样的形式.如果Client设置了Combiner那么group会被加起来成为13
+5. 至此,map端的所有工作都已经结束,最终生辰的这个文件也存放在TaskTracker够得着的某个本地目录内.每个reduce task不断地通过RPC从JobTracker哪里获取map task是否弯沉的信息,如果reduce task得到通知,货值某台TaskTracker上的map task执行完毕,Shuffle的后半过程开始启动.
+MapOutputBuffer两级索引结构
+
+Kvbuffer[]:Map端输出的k-v对集合.
+Kvindices[]:partition标记分区,keystart记录Kvbuffer[]中在该partition中对应的k的起始位置,valstart同理对应v的起始位置.
+Kvoffsets[]:存储Kvindices[]中partition对应数字.
+a) kvoffsets缓冲区,也叫偏移量所以数组,用于保存key/value信息在位置索引kvindices中的偏移量.当kevoffsets的使用率超过io.sprt.spill.percent(默认为80%)后,便会触发一次SpillThread线程的”溢写”操作,也就是开始一次Spill极端的操作.
+b) kvindices缓冲区,也叫位置索引数组,用于保存key.value在数据缓冲区kvbuffer中的起始位置.
+c) kvbuffer即数据缓冲区,用于保存实际的key/value的值.默认情况下该缓冲区最多可以是有io.sort.mb的95%,当kvbuffer使用率超过io.sort.spill.percent(默认80%)后,便会触发一次SpillThread线程的”溢写”操作,也就是考试一次Spill阶段的操作.
+1.20 Reduce Shuffle Phase
+
+5.1.5 Copy过程,
+1. 多个map任务的输出,按照不同的分区,通过网络copy到不同的reduce节点上
+简单地拉取数据.Reduce进程启动依稀数据copy线程(Fethcher),通过HTTP方式请求map task所在的TaskTracker获取map task的输出文件.因为map task早已经结束,这些文件就归TaskTracker管理在本地磁盘中.
+5.1.6 Merge阶段.
+2. 对多个map的输出进行合并,排序,接收的是分组后的数据,实现自己的业务逻辑,处理后产生新的<key,value>输出.传给Reduce函数
+这里的merge如map端的merge动作,只是数组中存放的是不同map端copy来的数值.Copy过来的数据先放入内存缓冲区中,这里的缓冲区大小要比map端的更为不灵活,它基于JVM的heap size设置,因为Shuffle阶段Reducer不运行,所以应该把绝大部分的内存都给Shuffle用.
+merge有三种方式:1)内存到内存,2)内存到磁盘,3)磁盘到磁盘.默认情况下第一种形式不启用.当内存中的数据量到达一定阈值,就启动内存到磁盘的merge.与map端类似,这也是溢写的过程,这个过程中如果你设置了Combiner,也是会启动的,然后在磁盘中生成众多溢写文件.第二种merge方式一直都在运行,知道没有map端的数据才结束,然后启动第三种磁盘到磁盘的merge方式升恒最终那个文件.
+5.1.7 Reduce的输入文件.
+3. 对reduce输出的<key,value>写到HDFS中.
+不断地merge后,最后最终会生成一个”最终文件”.这个文件可能存在于磁盘中也可能存在于内存中.但默认情况下,这个而文件是存放于磁盘中的.当Reduce的输入文件已定,真个Shuffle才最终结束.然后就是Reduce执行,把结果放到HDFS上.
+对MapReduce的调优在很大程度上就是对MapReduce Shuffle的性能的调优.
+1.21 源代码跟踪查看Map Task和Reduce Task数目的个数
+job.waitForCompletion(true);
+
+ if (state == JobState.DEFINE) {
+      submit();
+}
+
+connect();
+    info = jobClient.submitJobInternal(conf);
+    super.setJobID(info.getID());
+    state = JobState.RUNNING;
+   }
+ int reduces = jobCopy.getNumReduceTasks();
+  public int getNumReduceTasks() { return getInt("mapred.reduce.tasks", 1); }
+reduces个数为1
+
+
+map数
+  LOG.debug("Creating splits at " + fs.makeQualified(submitJobDir));
+          int maps = writeSplits(context, submitJobDir);
+    if (jConf.getUseNewMapper()) {
+      maps = writeNewSplits(job, jobSubmitDir);
+    } else {
+      maps = writeOldSplits(jConf, jobSubmitDir);
+}
+
+  List<InputSplit> splits = input.getSplits(job);
+    long minSize = Math.max(getFormatMinSplitSize(), getMinSplitSize(job));
+    long maxSize = getMaxSplitSize(job);
+ minSize:为1
+protected long getFormatMinSplitSize() {
+    return 1;
+  }
+  public static long getMinSplitSize(JobContext job) {
+    return job.getConfiguration().getLong("mapred.min.split.size", 1L);
+  }
+
+maxSize:
+  public static long getMaxSplitSize(JobContext context) {
+    return context.getConfiguration().getLong("mapred.max.split.size",
+                                              Long.MAX_VALUE);
+  }
+
+  if ((length != 0) && isSplitable(job, path)) {
+        long blockSize = file.getBlockSize();
+        long splitSize = computeSplitSize(blockSize, minSize, maxSize);
+protected long computeSplitSize(long blockSize, long minSize,
+                                  long maxSize) {
+    return Math.max(minSize, Math.min(maxSize, blockSize));
+  }
+那么splitSize = max(1,min(1,blockSize))
+也就是说默认情况下, splitSize的个数有blockSize决定
+1. MapReduce作业中Map Task数量的指定:
+1) MapReduce 从HDFS中分割读取Split文件,通过Inputformat交给Mapper来处理,Split是MapReduce中最小的计算单元,一个Split文件对应一个Map Task.
+2) 默认情况下HDFS中的一个block,对应一个Split.
+3) 当执行wordcount时:
+(1) 一个输入文件如果小于64M,默认情况则保存在hdfs上的一个block中,对应一个Split文件,所以讲产生一个Map Task.
+(2) 如果输入围巾啊为150M,默认情况则保存在hdfs上三个block中,对应三个Split文件,所以将产生三个Map  Task
+(3) 如果有输入三个文件都小于64M,默认情况下回保存三个不同的的block中,所对应三个Split文件,也将产生三个Map Task.
+
+4) 用户可自行指定block与split的关系,HDFS中的一个block,一个Split也可以对应多个blick,Split与block的关系是一对多的关系.
+5) 总结MapReduce作业中Map Task数据是由:
+输入文件的个数与大小
+hadoop设置split与block的关系决定的
+MapRecude作业中Reduce Task数目的指定;
+JobClient类中submitJobInternal方法中指定 int reduces = jobCopy.getNumReduceTasks();
+而JobConf类中,public int getNumRecudeTasks(){
+    return context.getConfiguration().getLong("mapred.max.split.size",1);
+  }
+所以默认值为1

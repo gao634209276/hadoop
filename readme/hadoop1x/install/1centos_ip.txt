@@ -1,0 +1,95 @@
+内容:	Hadoop生成环境是在Linux环境下,不过Hadoop2.x 已经开始支持Windows环境
+Linux环境搭建,使用VmWare搭建
+Linux版本,Centos6.4,RedHat6.x, 64位
+Linux基本名利操作和基本常识
+Linxu系统环境的基本配置,配置,ip配置,配置主机名,关闭防火墙
+远程连接Linux系统工具,FTP工具,命令行工具,桌面话工具
+
+Centos配置
+Net链接设置
+1)
+
+2) Setup设置自动获取地址
+
+3) 重启网络
+
+4) Ifconfig查询自动分配的IP地址
+
+5) 主机(win)命令行ping测试
+
+6) 使用xshell5远程访问
+
+设置登录信息
+
+7) 启动链接并重新手动配置ip
+
+Centos命令
+1 清楚屏幕 clear
+2 [root@localhost ~]#-[用户名@主机名称 当前目录] 当前用户级别(#root级别,$普通用户)
+3 配置主机名称
+查看当前系统主机名称: [root@localhost ~]#	hostname
+
+设置主机名称
+1 [root@localhost ~]# hostname MyTest:仅仅在当前登录生效,重启后不生效
+2  [root@localhost~]#vi	/etc/sysconfig/network
+
+Ip地址查看:
+	[root@localhost ~]# more /etc/sysconfig/network-scripts/ifcfg-eth0
+DEVICE=eth0
+HWADDR=00:0c:29:db:62:2f
+TYPE=Ethernet
+UUID=e7c6edf4-a892-4e1f-b6e8-ae4496b4be6b
+ONBOOT=yes
+NM_CONTROLLED=yes
+BOOTPROTO=none
+DNS2=211.138.30.66
+DNS1=211.138.24.66
+IPV6INIT=no
+USERCTL=no
+IPADDR=192.168.191.2
+NETMASK=255.255.255.0
+GATEWAY=192.168.191.1
+配置主机名和Ip对应
+	[root@localhost ~]# more /etc/hosts
+127.0.0.1   localhost localhost.localdomain localhost4 localhost4.localdomain4
+::1         localhost localhost.localdomain localhost6 localhost6.localdomain6
+192.168.101.2   localhost
+ain6
+(win系统)
+windows/system32/drivers/etc/hosts
+4 基本命令
+a 文件查看
+i more:	一页一页查看,翻页
+ii tail: 	文件最后几行内容,用于查看日志文件,滚动式
+iii cat:		查看所有文件内容
+b 当前目录pwd	当前目录下文件 ls;
+进入目录cd	/xx/xx(绝对路径) cd xx/xx(相对当前) cd ./ cd .. cd -
+c 创建目录mkdir /xx/xx ;mkdir –p;	创建文件 touch xx
+d ll;ls –l;
+dr-xr-xr-x.   2 root root  4096 4月  19 15:17 bin
+d:目录,-文件;l链接
+x:可执行,r可读取,w可写入
+2 root root
+权限:第一个:文件所属用户	r-x
+	第二个:用户组		r-x
+	第三个:其他人		r-x
+chown 	-R	 user xx
+chgrp	-R	group xx;
+chown 	-R user:group	xx;
+chmod	755	xx;		chmod	+x xx;		chmod –x	 xx;
+以.开头的文件表示隐藏文件
+e rm –rf;	mv;		cp;		tar –zcvf;		tar –jcvf;		tar –zxvf;		tar	-jxvf;
+远程工具
+一shell远程工具
+Xshell5
+二FTP文件传输工具连接
+工具:FileXilla Client
+	Xftp	5
+1. 设置连接信息
+
+2. 登录后,可以拖动连接
+三	远程桌面工具
+	Xmanager5
+Apache	Hadoop1.x
+
+1.

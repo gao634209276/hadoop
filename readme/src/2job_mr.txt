@@ -1,0 +1,190 @@
+mapreduce,job提交分析
+Yarn相关类的框架
+简单三步:
+Client (客户机可以在集群中,也可以不在集群中,Job提交)-->ResourceManager(RM,资源管理器,选择NM启动AM)-->ApplicationMaster(单个应用程序的管理者,负责具体业务的执行,通过hdfs寻找数据,执行Job)
+
+Client(提交Job,run job)-->Job(get new application)-->RM(RM选择一个node上,start container,启动AM)-->NM(启动java虚拟机,launch AM)-->AM(通过hdfs,initialize job,寻找数据input split分布,分析需要多少资源,然后请求RM, allocate resources)-->RM(分配资源list给AM)-->AM(在对应的NM上start container,启动task进程)-->NM(启动java虚拟机,launch Yarn Child)-->Yarn Child(retrieve job resources,检索资源信息在hdfs上,然后run map task,reduce task)-->Map task/Reduce task
+--------------------------------------------------------------
+几个类:
+Job
+	The job submitter's view of the Job.
+	It allows the user to configure the job, submit it, control its execution, and query the state. The set methods only work until the job is submitted, afterwards they will throw an IllegalStateException.
+	Normally the user creates the application, describes various facets of the job via Job and then submits the job and monitor its progress.
+	允许用户配置,提交,控制执行,查询状态,setxxx()方法必须在提交之前调用,之后会出错
+	通常情况下,create一个app,通过描述job的各个方面,提交,并检测运行情况
+	Here is an example on how to submit a job:
+
+     // Create a new Job
+     Job job = new Job(new Configuration());
+     job.setJarByClass(MyJob.class);
+
+     // Specify various job-specific parameters
+     job.setJobName("myjob");
+
+     job.setInputPath(new Path("in"));
+     job.setOutputPath(new Path("out"));
+
+     job.setMapperClass(MyJob.MyMapper.class);
+     job.setReducerClass(MyJob.MyReducer.class);
+
+     // Submit the job, then poll for progress until the job is complete
+     job.waitForCompletion(true);
+
+ResourceManager
+	The ResourceManager is the main class that is a set of components. "I am the ResourceManager. All your resources belong to us..."
+	集群中所有资源都属于RM管理
+	继承关系:ResourceManager-->CompositeService-->AbstractService-->Service
+	接口servcie中定义了枚举STATE,有四个状态NOTINITED,INITED,STARTED,STOPPED,以及几个核心方法:init(Configuration),start(),stop(),close()等
+	Service接口是服务类的接口,用于长期运行,待命状态
+	抽象类AbstractService添加了一些属性,实现了start(),stop(),close()方法,并提供了一个serviceStart()抽象方法,其中比较重要的属性为ServiceListeners listeners,该对象封装一个集合类属性List<ServiceStateChangeListener> listeners,ServiceStateChangeListener服务的状态变化监听器是一个接口含有一个方法stateChanged(Service)
+	CompositeService组合服务类实现和复写了serviceStart()等方法,组合了一个serviceList : List<Service>的集合属性,添加的一些组合服务的操作:addService(Service);addIfService(Object);getServices();等
+	最终ResourceManager类中,添加了内部服务类RMActiveServices,以及相应的属性和方法:RMActiveServices activeServices;AdminService adminService;RMSecretManagerService rmSecretManagerService;ApplicationMasterService masterService;ResourceTrackerService resourceTracker;等等;
+NodeManager
+	通过createContainersLauncher(Context, ContainerExecutor)方法返回一个ContainersLauncher类,他的handle(ContainersLauncherEvent)方法,根据不同情况执行相应操作启动,停止,恢复操作,这三种情况被ContainerLaunch类管理,分别为LAUNCH_CONTAINER,RECOVER_CONTAINER,CLEANUP_CONTAINER
+	继承关系:NodeManager-->CompositeService-->AbstractService-->Service,同ResourceManager类似
+
+MRAppMaster
+	The Map-Reduce Application Master. The state machine is encapsulated in the implementation of Job interface. All state changes happens via Job interface.
+	状态机,封装了Job接口的实现,所有状态变化通过job接口使其发生
+	Each event results in a Finite State Transition in Job. MR AppMaster is the composition of loosely coupled services.
+	每个事件会导致最终的状态的状态变换
+	The services interact with each other via events.The components resembles the Actors model. The component acts on received event and send out the events to other components. This keeps it highly concurrent with no or minimal synchronization needs. The events are dispatched by a central Dispatch mechanism.
+	状态机变换是基于事件的,组件之间收发事件,事件是载体,事件有核心分发机制分发
+	All components register to the Dispatcher. The information is shared across different components using AppContext.
+	所有组件注册到调度程序。该信息在使用不同的AppContext组件共享。
+	继承关系:MRAppMaster-->CompositeService-->AbstractService-->Service,同NodeManager和RM类似
+YarnChild
+	mr任务mrtask主要进程
+	负责启动
+MapTask
+	Map任务封装
+ReduceTask
+	Reduce任务封装
+MapReduce V2中为MapTaskImpl和ReduceTaskImpl,同集成了TaskImpl
+
+=================================================================
+源代码调试:
+之前通过eclipse等ide工具,编写代码,导出jar包,jar --> hdfs,或者hadoop jar xxx.jar xxx /inptu /output方式运行
+这里通过在eclipse中直接运行,使用ant,ant是apache下的软件管理工具,下面为代码部分:
+
+	public class MaxTemperatureMapper extends
+		Mapper<LongWritable, Text, Text, IntWritable> {
+		private static final int MISSING = 9999;
+	@Override
+	protected void map(LongWritable key, Text value, Context context)
+			throws IOException, InterruptedException {
+		String line = value.toString();
+		String year = line.substring(15, 19);
+		int airTemperature;
+		if (line.charAt(89) == '+') {
+			airTemperature = Integer.parseInt(line.substring(88, 92));
+		} else {
+			airTemperature = Integer.parseInt(line.substring(87, 92));
+		}
+		String quality = line.substring(92, 93);
+		if (airTemperature != MISSING && quality.matches("[01459")) {
+			context.write(new Text(year), new IntWritable(airTemperature));
+		}
+	}
+	public class MaxTemperatureReducer extends
+		Reducer<Text, IntWritable, Text, IntWritable> {
+		protected void reduce(Text key, java.lang.Iterable<IntWritable> values,
+				Context context) throws java.io.IOException, InterruptedException {
+			int maxValue = Integer.MIN_VALUE;
+			for (IntWritable value : values) {
+				maxValue = Math.max(maxValue, value.get());
+			}
+			context.write(key, new IntWritable(maxValue));
+		}
+	}
+	public class MaxTemperature {
+		public static void main(String[] args) throws Exception {
+			MaxTemperature d = new MaxTemperature();
+			d.run(args);
+		}
+		public int run(String[] args) throws Exception {
+			// validate outdir exists
+			Configuration conf = new Configuration();
+			FileSystem fs = FileSystem.get(conf);
+			Path path = new Path("/user/hadoop/mr/output");
+			Path tmpDir = new Path("/tmp");
+			fs.deleteOnExit(path);
+			fs.deleteOnExit(tmpDir);
+
+			Job job = Job.getInstance();
+			job.setJarByClass(MaxTemperature.class);
+			job.setJobName("Max temperature");
+			FileInputFormat.addInputPath(job, new Path(args[0]));
+			FileOutputFormat.setOutputPath(job, new Path(args[1]));
+
+			job.setMapperClass(MaxTemperatureMapper.class);
+			job.setReducerClass(MaxTemperatureReducer.class);
+			job.setOutputKeyClass(IntWritable.class);
+			job.setOutputValueClass(IntWritable.class);
+			return job.waitForCompletion(true) ? 0 : 1;
+		}
+	}
+ant配置xml,在工程下创建build.xml,编辑如下
+	<project name="hadoop" basedir="." default="prepare">
+		<target name="prepare" >
+			<delete dir="${basedir}/build/classes"/>
+			<mkdir dir="${basedir}/build/classes"/>
+		</target>
+		<path id="path1">
+			<fileset dir="${basedir}/lib">
+				<include name="*.jar"/>
+			</fileset>
+		</path>
+		<!-- task -->
+		<target name="compile" depends="prepare">
+			<javac srcdir="${basedir}/src" destdir="${basedir}/build/classes"
+			classpathref="path1" includeantruntime="true"/>
+		</target>
+		<target name="package" depends="compile">
+			<jar destfile="${basedir}/lib/My.jar" basedir="${basedir}/build/classes"/>
+		</target>
+	</project>
+选择选中build.xml点击run as,选择Ant Build,完成后打包的jar在lib目录下,然后运行项目即可
+------------------------------------------------------
+Job的提交:
+	1.Job job ...
+	2.job.waitForCompletion(true)-->submit()-->return submitter.submitJobInternal(Job.this, cluster);-->
+	*(1)checkSpecs(job);-->output.checkOutputSpecs(job);...//检查out目录是否存在
+	*(2)JobSubmissionFiles.getStagingDir(cluster, conf);//准备hdfs上的staging目录
+	*(3)JobID jobId = submitClient.getNewJobID(); //得到job id
+	*(4)Path submitJobDir = new Path(jobStagingArea, jobId.toString());//构造提交job的目录为:/tmp/..../.staging/job_xxxxx_000x
+	*(5)copyAndConfigureFiles(job, submitJobDir); //复制与配置文件(jar),所有datanode上都存在副本/tmp/..../.staging/job_xxxxx_000x/job.jar
+	*(6)int maps = writeSplits(job, submitJobDir);//写入切割信息文件,/tmp/..../.staging/job_xxxxx_000x/job.split和job.splitmetainfo,其中所有datanode上都存在副本job.split
+	*(7)Path submitJobFile = JobSubmissionFiles.getJobConfPath(submitJobDir);//构造, 提交作业文件path
+	*(8)writeConf(conf, submitJobFile);//写入配置文件/tmp/..../.staging/job_xxxxx_000x/job.xml,副本数同个人配置相同,job.xml中内容包含了个人配置的xml文件和core中的default.xml文件的信息
+	*(9)status = submitClient.submitJob(jobId, submitJobDir.toString()-->调用YARNRunner类中的submitJob(JobID, String, Credentials) job.getCredentials());-->ApplicationId applicationId = resMgrDelegate.submitApplication(appContext);//通过资源管理器代理对象提交作业给集群,(RPC协议)
+	*(10)jtFs.delete(submitJobDir, true);任务完成后,删除/tmp/..../.staging/的job文件目录,然后转化为历史
+通过调试跟踪产看:在job.waitForCompletion(true)断点...略
+-----------------------------------------
+
+YARN架构
+1) client提交一个app到RM,RM对NM下达命令,监控NM状态,NM向RM汇报资源,应用信息
+client-->Resource Manager<==>Node Manager 1,2,3...--->
+2) RM对NM下发命令后,NM在本节点启动一个AM应用程序MR APP,AM向RM申请资源Container
+Node Manager1-->App Master-->Container-->RM-->
+3) RM是一点点的发送Resource给AM,不是一次全给够,AM获取到资源后,分配资源给Task1,2,..
+每个Task可能分布在不同的节点,那么AM将会将资源分发到对应的NM上,有NM来执行Task
+MR APP Master(MapReduce为例,MR的Application Master)-->Task1,2,3,...--->NM1,2,3..
+从每个角色的角度来看:
+RM:处理client请求,启动监控AM,资源分配和调度
+NM:管理单个节点资源container和任务task,处理RM的命令,AM的命令(启动AM,Task)
+AM:数据切分(分配任务Task),为App请求资源container并分配给内部任务,任务的监控和容错
+Container:任务运行换进的抽象,封装了CPU,内存等多为资源以及环境变量,启动命令等任务运行相关信息
+Yarn双层调度:RM-->AM-->Task
+资源预留:一个AM申请的资源过大,会慢慢积累,不像Oracle中的All or Nothing,要么一次性给完,要么就不给
+其他可选信息:
+多类型:cpu+内存
+多种资源调度:FIFO,Fair,Capacity
+多租户资源调度Schecluder:比例,层级,资源抢占
+隔离:Cpu关系着App的快慢,内存却关系着生死.thread(线程),Cgroup
+调度语义:一个节点/机架上特定资源,黑名单,归还Resources
+不支持:任意节点,特定的Resources,一组特定的Resource,超细的,动态的
+MR2 on Yarn
+MR时间长,开销大,效率低.流程为client-->RM-->NM-->AM-->Task[Map,Reduce](查看任务,并请求资源)-->
+(请求资源)RM-->AM(分配资源)-->NM(分配资源和任务)-->Task(NM上启动Task)
+优化MR:多个MR使用依赖关系,合并一个DAG,技术:缓冲池,AMPoolServer,Container,预期定,重用

@@ -1,0 +1,433 @@
+1. 目录
+1	HDFS文件读写流程解析	2
+1.1	shell命令行方式读写	2
+1.2	HDFS文件读取流程	2
+1.3	HDFS文件写入流程	3
+2	使用HDFS 和URL  API读取文件	3
+2.1	URL方式读取文件内容	3
+2.2	使用HDFS FileSystem读取文件	4
+3	FileSystem API操作详解	5
+3.1	文件操作	6
+上传文件到HDFS—copyFromLocalFile(srcPath, dstPath)	6
+读取文件—IOUtils.copyBytes(in, out, conf, close)	6
+新建文件并写入—create(f); fsDataOutputStream.writeUTF(str)	7
+重命名文件-- hdfs.rename(src, dst)	7
+删除FileSystem上的文件-- deleteOnExit(f)	7
+3.2	目录操作	8
+读取某个目录下的所有文件—listStatus(path);	8
+创建目录	--mkdirs(path)	8
+删除目录—delete(path, recursive)	8
+3.3	HDFS信息	8
+查找某个文件下HDFS集群的位置--- BlockLocation	8
+获取HDFS集群上所有节点名称信息---DatanodeInfo类	9
+4	源码分析Configuration和FileSystem	10
+4.1	Configuration方法addDefaultResource()	10
+4.2	Configuration的docs文档	11
+4.3	org.apache.hadoop.fs.FileSystem	11
+4.4	FileSystem的get(conf)源码解析	11
+4.5	Configuration中的getProps()源码解析	12
+4.6	loadResource(properties, resource, quiet)	13
+4.7	FileSystem对象通过反射方式创建	13
+4.8	默认配置文件xxx-default.xml	15
+
+
+
+
+
+
+
+
+
+
+
+
+1 HDFS文件读写流程解析
+1.1 shell命令行方式读写
+1. 上传文件,其实就是对HDFS文件写的过程
+[hadoop@hadoop-master data]$ hadoop fs -mkdir /opt/data/test
+[hadoop@hadoop-master data]$ hadoop fs -put 01data /opt/data/test
+[hadoop@hadoop-master data]$ hadoop fs -ls /opt/data/test
+Found 1 items
+-rw-r--r--   1 hadoop supergroup         13 2016-04-20 23:12 /opt/data/test/01data
+2. 读取文件内容:
+[hadoop@hadoop-master data]$ hadoop fs -text /opt/data/test/01data
+Hello Hadoop
+3. fs源代码		bin/hadoop
+hadoop1.2.1/bin/hadoop脚本代码有一下内容:
+elif [ "$COMMAND" = "fs" ] ; then
+  		CLASS=org.apache.hadoop.fs.FsShell
+  		HADOOP_OPTS="$HADOOP_OPTS $HADOOP_CLIENT_OPTS"
+elif [ "$COMMAND" = "dfs" ] ; then
+ 		CLASS=org.apache.hadoop.fs.FsShell
+  		HADOOP_OPTS="$HADOOP_OPTS $HADOOP_CLIENT_OPTS"
+1.2 HDFS文件读取流程
+
+
+1. Client调用FileSystem.open()方法:
+1) FileSystem通过RPC与NN通信,NN返回该文件的部分或全部block列表(含有block拷贝的DN地址).
+2) 选取距离客户端最近的DN建立连接,读取block,返回FSDatalnputStream.
+2. Client调用流的read()方法:
+1) 当读到block结尾时,FSDatalnputStream关闭与当前DN的连接,并为读取下一个block寻找最近DN.
+2) 读取完一个block都会进行checksum验证,如果读取DN是出现错误,客户端会通知NN,然后再从下一个拥有该block拷贝的DN继续读.
+3) 如果block列表读完后,文件还未结束,FileSylstem会继续从NN获取下一批block列表.
+4) 关闭FSDatalnputStream
+1.3 HDFS文件写入流程
+
+
+1. Client调用FileSystem的create()方法:
+1) FileSystem向NN放出请求,在NN的namespace里面创建一新文件,但是并不关联任何块.
+2) NN检查文件是否已存在,操作权限. 如果检查通过,NN记录新文件信息,并在某一个DN上创建数据块.
+3) 返回FSDataOutputStream,将Client引导至该数据块执行写入操作.
+2. Client调用输出流的write()方法:	HDFS默认将每个数据块放置3份. FSDataOutputStream将数据首先写到第一节点,第一节点将数据包传送并写入第二个节点,第二节点第三几点.返回结果
+3. Client调用流的close()方法:	flush缓冲区的数据包,block完成复制份数后,NN返回成功消息.
+2 使用HDFS 和URL 	API读取文件
+1.4 URL方式读取文件内容
+1. Eclipse创建java工程
+2. 创建lib文件目录,导入jar包(分别在hadoop1.2.1解压包内)
+commons-configuration-1.6.jar
+commons-lang-2.4.jar
+commons-logging-1.1.1.jar
+hadoop-core-1.2.1.jar
+log4j-1.2.15.jar
+commons-cli-1.2.jar包在MapReduce中会使用到,这里先不用.
+3. URL的API
+比较简单的读取hdfs数据的方法就是通过java.net.URL打开一个流，不过在这之前先要预先调用它的setURLStreamHandlerFactory方法设置为FsUrlStreamHandlerFactory（由此工厂取解析hdfs协议），这个方法只能调用一次，所以要写在静态块中。然后调用IOUtils类的copyBytes将hdfs数据流拷贝到标准输出流System.out中，copyBytes前两个参数好理解，一个输入，一个输出，第三个是缓存大小，第四个指定拷贝完毕后是否关闭流。我们这里要设置为false，标准输出流不关闭，我们要手动关闭输入流。
+4. 代码部分:
+创建一个HDFSUrlTest类
+public class HDFSUrlTest {
+	static {
+		URL.setURLStreamHandlerFactory(new FsUrlStreamHandlerFactory());
+	}
+	@Test
+	public void testRead() throws Exception {
+		InputStream in = null;
+		String fileUrl = "hdfs://hadoop-master.dragon.org:9000/opt/data/test/01.data";
+		try {
+			in = new URL(fileUrl).openStream();
+			IOUtils.copyBytes(in, System.out, 4096, false);
+		} finally {
+			IOUtils.closeStream(in);
+		}
+	}
+}
+1.5 使用HDFS FileSystem读取文件
+
+首先是实例化FileSystem对象，通过FileSystem类的get方法，这里要传入一个配置Configuration(和一个java.net.URL)。
+
+然后FileSystem可以通过一个Path对象打开一个流，之后的操作和上面的例子一样
+
+public class HDFSFsTest {
+	@Test//读取操作只用到core-site.xml配置文件
+	public void testRead()throws Exception{
+		//获取配置
+		Configuration conf = new Configuration();
+		//获取文件系统
+		FileSystem hdfs = FileSystem.get(conf);
+		//文件名称
+		Path path = new Path("/opt/data/test/01.data");
+		//打开输入流
+		FSDataInputStream inStream = hdfs.open(path);
+		//进行文件读取,到控制台显示
+		IOUtils.copyBytes(inStream, System.out, 4096, false);
+		//关闭流
+		IOUtils.closeStream(inStream);
+	}
+}
+
+
+3 FileSystem API操作详解
+
+下面一些列的操作,都需要使用FileSystem类的实例对象,因此,在这里把公用部分提取出来到一个公用的Util类中.如下:
+public class HDFSUtils {
+	public static FileSystem getFileSystem() {
+		// 声明FilSystem
+		FileSystem hdfs = null;
+		try {
+			// 获取文件信息
+			Configuration conf = new Configuration();
+			// 获取文件系统
+			hdfs = FileSystem.get(conf);
+		} catch (Exception e) {
+		}
+		return hdfs;
+	}
+}
+1.6 文件操作
+上传文件到HDFS—copyFromLocalFile(srcPath, dstPath)
+
+
+	public void testPut() throws IOException{
+		FileSystem hdfs = HDFSUtils.getFileSystem();
+		//本地上传文件(目录+文件名称)
+		Path srcPath = new Path("E:/Workspaces/FileInput/books.xml");
+		//HDFS文件上传路径(目录or目录+文件名称)
+		Path dstPath = new Path("/opt/data/text");
+		hdfs.copyFromLocalFile(srcPath, dstPath);
+	}
+然后查看hdfs中的文件:
+
+
+读取文件—IOUtils.copyBytes(in, out, conf, close)
+
+
+	public void testRead()throws Exception{
+		FileSystem hdfs = HDFSUtils.getFileSystem();
+		//文件名称
+		Path path = new Path("/opt/data/test/01.data");
+		//打开输入流--open()
+		FSDataInputStream inStream = hdfs.open(path);
+		//进行文件读取,到控制台显示--read()
+		IOUtils.copyBytes(inStream, System.out, 4096, false);
+		//关闭流--close()
+	IOUtils.closeStream(inStream);
+	}
+新建文件并写入—create(f); fsDataOutputStream.writeUTF(str)
+
+	public void createAndWrite() throws Exception{
+		FileSystem hdfs = HDFSUtils.getFileSystem();
+		Path path = new Path("/opt/data/dir/touch.data");
+		FSDataOutputStream fsDataOutputStream = hdfs.create(path);
+		fsDataOutputStream.writeUTF("Hello Hadoop");
+		IOUtils.closeStream(fsDataOutputStream);
+	}
+重命名文件-- hdfs.rename(src, dst)
+public void testReanme() throws IOException {
+		FileSystem hdfs = HDFSUtils.getFileSystem();
+		Path srcPath = new Path("/opt/data/dir/touch");
+		Path destPath = new Path("/opt/data/dir/renametouch");
+		boolean isSuccess = hdfs.rename(srcPath, destPath);
+		String info = isSuccess ? "成功" : "失败";
+		System.out.println("重命名" + srcPath + info);
+	}
+
+删除FileSystem上的文件-- deleteOnExit(f)
+public void testDelete() throws IOException{
+		FileSystem hdfs = HDFSUtils.getFileSystem();
+		Path srcPath = new Path("/opt/data/dir/renametouch");
+		System.out.println(hdfs.deleteOnExit(srcPath));
+	}
+1.7 目录操作
+读取某个目录下的所有文件—listStatus(path);
+
+	public void testList() throws Exception {
+		FileSystem hdfs = HDFSUtils.getFileSystem();
+		// 目录
+		Path path = new Path("/opt/data/");
+		FileStatus[] fileStatus = hdfs.listStatus(path);
+		for (FileStatus fs : fileStatus) {
+			Path p = fs.getPath();
+			String info = fs.isDir() ? "目录" : "文件";
+			System.out.println(info+p.toString());
+		}
+	}
+创建目录	--mkdirs(path)
+mkdirs()相当于shell命令的mkdir –p /opt/data/dir
+	public void create() throws Exception {
+		FileSystem hdfs = HDFSUtils.getFileSystem();
+		// 目录
+		Path path = new Path("/opt/data/dir");
+		boolean isSuccess = hdfs.mkdirs(path);
+		String info = isSuccess ? "成功" : "失败";
+		System.out.println("创建目录[" + path + "]"+info);
+	}
+删除目录—delete(path, recursive)
+public void testDeleteDir() throws IOException{
+		FileSystem hdfs = HDFSUtils.getFileSystem();
+		Path srcPath = new Path("/opt/data/dir");
+		System.out.println(hdfs.delete(srcPath, true));
+	}
+1.8 HDFS信息
+查找某个文件下HDFS集群的位置--- BlockLocation
+上传一个大文件到HDFS,可以通过浏览器查看HDFS集群中的位置
+http://hadoop-master.dragon.org:50070/中点击Browse the filesystem可以查看FS中所有文件,以及文件block对应在那一台分布式集群的主机上.本例是伪分布式,所以肯定都是在NameNode所在的主机上.
+
+以下为FileSystem的API方式查询:
+1. 通过FileSystem实例对象获取Path对应的FileStatus对象
+2. 通过文件系统hdfs.getFileBlockLocations(file, start, len)方法,传入FileStatus对象,起始位置,文件大小fileStatus.getLen();获取到所有的BlockLocation集合,遍历block
+3. 遍历BlockLocation集合block.getHosts(),获取文件块所在的每一个分布式主机名
+public void testLocation() throws IOException {
+		FileSystem hdfs = HDFSUtils.getFileSystem();
+		Path path = new Path("/opt/data/dir/file");
+		FileStatus fileStatus = hdfs.getFileStatus(path);
+		BlockLocation[] blockLocation = hdfs.getFileBlockLocations(fileStatus, 0, fileStatus.getLen());
+		for (BlockLocation bl : blockLocation) {
+			String[] hosts = bl.getHosts();
+			for (String host : hosts) {
+				System.out.print(host+" ");
+			}
+		}
+	}
+获取HDFS集群上所有节点名称信息---DatanodeInfo类
+1. 将FileSystem实例对象向下转型为DistributedFileSystem类
+2. 通过分布式文件系统方法getDataNodeStats()获取到这里的返回DatanodeInfo[]集合,包含了所有的Datanode节点对应的信息.
+3. 遍历DatanodeInfo[]集合,获取到每个DataNode节点的DatanodeInfo对象,然后可以获取一系列相关信息.
+public void testCluster() throws IOException{
+		FileSystem fs = HDFSUtils.getFileSystem();
+		DistributedFileSystem dfs = (DistributedFileSystem) fs;
+		DatanodeInfo[] daInfos = dfs.getDataNodeStats();
+		for (DatanodeInfo daInfo : daInfos) {
+			System.out.println(daInfo.getHostName());
+		}
+	}
+
+4 源码分析Configuration和FileSystem
+1.9 Configuration方法addDefaultResource()
+org.apache.hadoop.conf.Configuration是Hadoop文件系统hdfs加载xml配置文件相关资源的类.
+查看源码中包含下面这段静态代码块.也就是在实例化Configuration的时候,就会加载一下代码.
+static{
+    //print deprecation warning if hadoop-site.xml is found in classpath
+    ClassLoader cL = Thread.currentThread().getContextClassLoader();
+    if (cL == null) {
+      cL = Configuration.class.getClassLoader();
+    }
+    if(cL.getResource("hadoop-site.xml")!=null) {
+      LOG.warn("DEPRECATED: hadoop-site.xml found in the classpath. " +
+          "Usage of hadoop-site.xml is deprecated. Instead use core-site.xml, "
+          + "mapred-site.xml and hdfs-site.xml to override properties of " +
+          "core-default.xml, mapred-default.xml and hdfs-default.xml " +
+          "respectively");
+    }
+    addDefaultResource("core-default.xml");
+    addDefaultResource("core-site.xml");
+  }
+1. 通过代码可以看到通过当前线程获取类加载器ClassLoder实例对象,
+2. 判断类加载器为空,如果为空,加载Configuration的类加载器
+3. 判断类加载器是否读取到了hadoop-site.xml文件,如果有这个文件,log输出一下内容:发现hadoop-site.xml文件,此文件是过时的,应该分别使用core-site.xml,hdfs-default.xml和mapred-default.xml;
+这里的hadoop-site.xml文件是Hadoop0.2.0以前的配置文件,只有一个.此后所有版本都是core-site.xml,hdfs-default.xml和mapred-default.xml,当然也可以发现这三个xml文件的约束都属于同一个配置文件:<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+4. 默认加载文件core-site.xml和core-default.xml文件
+5. 查看addDefaultResource()源代码:
+if(!defaultResources.contains(name)) {
+      defaultResources.add(name);
+      for(Configuration conf : REGISTRY.keySet()) {
+        if(conf.loadDefaults) {
+          conf.reloadConfiguration();
+        }
+      }
+}
+	判断是否包含name,如果没有defaultResources添加这个name.这里的defaultResources是一个集合.然后遍历Configuration集合,判断conf的是否为默认加载,如果是默认的就清空这个conf;
+1.10 Configuration的docs文档
+在hadoop-1.2.1解压包中打开hadoop-1.2.1/docs/api/index.html找到Configuration类的文档说明有一段文字
+Unless explicitly turned off, Hadoop by default specifies two resources, loaded in-order from the classpath:
+1. core-default.xml : Read-only defaults for hadoop.
+2. core-site.xml: Site-specific configuration for a given hadoop installation.
+Applications may add additional resources, which are loaded subsequent to these resources in the order they are added.
+指明了默认加载的xml文件.
+1.11 org.apache.hadoop.fs.FileSystem
+org.apache.hadoop.fs.FileSystem 是一个抽象类,有很多实现类.
+
+通过api帮助文档可以查阅,如下所示
+
+通过帮助文档可以看到get方法如下所示:
+
+1.12 FileSystem的get(conf)源码解析
+1. FileSystem类中get(conf)获取的FS是由get(Uri,conf)获取,需要参数getDefaultUri(conf)和conf
+
+get(Configuration conf)源码:
+public static FileSystem get(Configuration conf) throws IOException {
+    return get(getDefaultUri(conf), conf);
+  }
+其中getDefaultUri(conf):可以看到通过RUI.create()的获取的URI对象;
+而这个URI通过fixName()方法创建,此方法有两种加载方式,有local本地模式file:///,hdfs方式hdfs://;
+而此处的参数由conf.get(FS_DEFAULT_NAME_KEY, "file:///")获取,参数file:///表示local模式.
+getDefaultUri(Configuration conf)源码:
+public static URI getDefaultUri(Configuration conf) {
+    return URI.create(fixName(conf.get(FS_DEFAULT_NAME_KEY, "file:///")));
+  }
+  	public static final String FS_DEFAULT_NAME_KEY = "fs.default.name";
+
+其中FS_DEFAULT_NAME_KEY值fs.default.name由core-site.xml配置文档中获取.
+<property>
+                <name>fs.default.name</name>
+                <value>hdfs://hadoop-master.dragon.org:9000</value>
+        </property>
+1.13 Configuration中的getProps()源码解析
+
+2. 接着说4.4的1.中提到的get(Uri,conf)方法主要使用了getProps()方法
+
+get(Uri,conf)源码:
+public String get(String name, String defaultValue) {
+    return substituteVars(getProps().getProperty(name, defaultValue));
+  }
+
+getProps()方法源码:
+  private synchronized Properties getProps() {
+    if (properties == null) {
+      properties = new Properties();
+      loadResources(properties, resources, quietmode);
+      if (overlay!= null) {
+        properties.putAll(overlay);
+        for (Map.Entry<Object,Object> item: overlay.entrySet()) {
+          updatingResource.put((String) item.getKey(), UNKNOWN_RESOURCE);
+        }
+      }
+    }
+    return properties;
+  }
+在这里loadResources(properties, resources, quietmode)是加载资源,就是读取core-site.xml和core-default.xml内容信息的方法.
+判断是否是默认加载,如果是,从默认的资源文件源中获取并加载;
+
+loadResources(Properties properties, ArrayList resources,boolean quiet)源码如下:
+private void loadResources(Properties properties,
+                             ArrayList resources,
+                             boolean quiet) {
+    if(loadDefaults) {
+      for (String resource : defaultResources) {
+        loadResource(properties, resource, quiet);
+      }
+      //support the hadoop-site.xml as a deprecated case
+      if(getResource("hadoop-site.xml")!=null) {
+        loadResource(properties, "hadoop-site.xml", quiet);
+      }
+}
+    for (Object resource : resources) {
+      loadResource(properties, resource, quiet);
+    }
+  }
+
+1.14 loadResource(properties, resource, quiet)
+3. loadResource(properties, resource, quiet)方法是解析xml配置文件的具体实现部分.
+1) 首先声明DocumentBuilderFactory对象,然后创建DocumentBuilder实例对象,判断resource的name属于哪一种,然后进行相应的解析.
+2) 然后判断能否获取到doc和root,如果为null,根据quiet来决定抛异常退出还是继续一下步骤;
+3) 解析root;判断root的名字是并由doc获取Document的元素赋值,如果root标签名字不是configuration,抛出日志:bad conf file
+4) 然后解析root的子节点:propNode;判断是configuration加载prop,判断property解析name ,value,final
+1.15 FileSystem对象通过反射方式创建
+4. 回到4.4节的1中;生成FileSystem对象是使用的方法get(URI uri, Configuration conf),其中主要用到了createFileSystem(URI uri, Configuration conf)方法,而该方法创建FileSystem对象是使用了反射的方式:	ReflectionUtils.newInstance(clazz, conf);
+
+get(URI uri, Configuration conf)源代码:
+  public static FileSystem get(URI uri, Configuration conf) throws IOException {
+    String scheme = uri.getScheme();
+    String authority = uri.getAuthority();
+
+    if (scheme == null && authority == null) {     // use default FS
+      return get(conf);
+    }
+
+    if (scheme != null && authority == null) {     // no authority
+      URI defaultUri = getDefaultUri(conf);
+      if (scheme.equals(defaultUri.getScheme())    // if scheme matches default
+          && defaultUri.getAuthority() != null) {  // & default has authority
+        return get(defaultUri, conf);              // return default
+      }
+    }
+    String disableCacheName = String.format("fs.%s.impl.disable.cache", scheme);
+    if (conf.getBoolean(disableCacheName, false)) {
+      return createFileSystem(uri, conf);
+    }
+return CACHE.get(uri, conf);
+}
+
+createFileSystem(URI uri, Configuration conf)方法源码:
+
+private static FileSystem createFileSystem(URI uri, Configuration conf
+      ) throws IOException {
+    Class<?> clazz = conf.getClass("fs." + uri.getScheme() + ".impl", null);
+    LOG.debug("Creating filesystem for " + uri);
+    if (clazz == null) {
+      throw new IOException("No FileSystem for scheme: " + uri.getScheme());
+    }
+    FileSystem fs = (FileSystem)ReflectionUtils.newInstance(clazz, conf);
+    fs.initialize(uri, conf);
+    return fs;
+  }
+1.16   默认配置文件xxx-default.xml
+core-default.xml,	hdfs-default.xml,	mapred-default.xml在hadoop1.2.1解压包的hadoop核心包hadoop-core-1.2.1.jar的jar包中;解压打开后可以查看详细的配置信息.

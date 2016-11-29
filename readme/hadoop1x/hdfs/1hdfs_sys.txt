@@ -1,0 +1,526 @@
+1. 目录
+1	HDFS体系结构	2
+1.1	Apache Hadoop设计假设和设计目标	2
+1.2	HDFS定义	2
+1.3	HDFS设计目标	3
+1.4	HDFS不擅长方面	5
+2	HDFS架构	5
+2.1	官方文档	5
+2.2	HDFS架构-- --文件	6
+2.2.1	HDFS文件	6
+2.2.2	文件Block(数据块)	6
+2.2.3	HDFS文件权限	7
+2.2.4	官网演示例子	7
+2.3	HDFS架构—NameNode	8
+2.4	HDFS架构—DataNode	8
+3	HDFS架构—保障可靠性的措施	9
+3.1	可靠性的措施	9
+3.2	常见的三种错误	9
+3.3	HDFS副本放置策略	10
+3.4	数据损坏(corruption)处理	10
+4	HDFS工作原理	11
+4.1	HDFS文件读取流程	11
+4.2	HDFS文件写入流程	12
+5	HDFS与其他系统	13
+5.1	HDFS与MapReduce结合	13
+5.2	HDFS与Hbase结合	13
+6	HDFS2.0	13
+6.1	NameNode HA	13
+6.2	NameNode Federation	14
+7	HDFS架构—Client&SNN	15
+7.1	Client	15
+7.2	Secondary NameNode	15
+7.2.1	镜像文件详解:	15
+7.2.2	合并步骤	16
+8	HDFS Shell常用命令	16
+8.1	HDFS Shell命令—文件命令	16
+8.1.1	FS URI	16
+8.1.2	帮助文档	17
+8.2	HDFS Shell命令—管理命令	18
+8.3	HDFS Shell命令—文件管理工具	20
+8.4	HDFS Shell命令—任务调度命令	21
+8.5	HDFS Shell数据均衡器	21
+
+1 HDFS体系结构
+
+1.1 Apache Hadoop设计假设和设计目标
+1. 硬件错误:	数量众多的廉价的机器使得硬件错误成为常态.
+2. 数据流访问:	应用以流的方式访问数据;设计用于数据的批量处理,而不是低延时的实时交互处理. 放弃全面支持POSIX.
+3. 大数据集:	典型的HDFS上的一个文件大小是G或T数量级别的,支持一个云中文件数量达到千万数量级.
+4. 简单的相关模型: 假定文件一次写入多次读取. 未来可硬支持Appending-write的模型.
+5. 移动计算比移动数据便宜:一个应用请求的计算,离它操作的数据越近就越高效.
+6. 多种软硬件平台中的可移植性
+
+1.2 HDFS定义
+为了存储海量大数据,使用分布式多副本的高容错机制,并将文件的映射关系放置一个节点
+
+出现问题:
+难以实现负载均衡
+文件大小不同,负载均衡不易实现,用户自己控制文件大小
+难以并行化处理
+只能利用一个节点资源处理一个文件,是无法动用集群啊资源处理同一个文件
+这样形成HDFS的设计
+将文件分为多个Block,每个Block默认64M,将每个Block在分布式文件系统存储,并将Block的元数据信息存储在一个节点,用户界面只是一整个文件,而读取都是分布式文件系统封装完成,这个Block分布式对用户是透明的(看不到的)
+
+Google-GFS论文HDFS
+易于扩展的文件系统,运行在大量的普通机器,容错机制,为大量用户提供性能不错的文件存取服务
+
+源于Google的GFS论文,发表于2003年10月,HDFS是GFS的克隆版
+Hadoop Distributed File System
+1. 易于扩展的分布式文件系统
+2. 运行在大量普通廉价机器上,提供容错机制
+3. 为大量用户提供性能不错的文件存取服务
+1.3 HDFS设计目标
+高容错性
+数据自动保存多个副本,丢失后,自动回复
+适合批处理
+移动计算而非数据,数据位置暴露给计算框架
+适合大数据处理
+GB,TB,Pb级别,办完规模以上数据量,10K+节点规模
+流式文件访问
+一次写入,多次读取,保证数据一致性
+可构建在廉价机器上
+通过多副本提供高可靠性,提供容错和回复机制
+不擅长方面
+低延迟数据访问,小文件存取(占用NameNode大量内存),并发写入,文件随机修改
+
+1. 非常巨大的分布式文件系统
+万个以上节点,亿个文件以上,10Pb的容量以上
+2. 运行与普通硬件上
+文件复制多份,避免硬件失败
+探测失败和错误恢复
+3. 优化批处理
+数据暴露位置,以便计算能够挪到数据附近
+提供高聚合的带宽
+4. 用户空间可以位于异构的操作系统中
+5. 在整个集群中使用单一的命名空间
+
+6. 数据一致性
+“写入一次读取多次”的访问模型
+客户点只能追加有的文件
+7. 文件被分为各个小块
+默认每一块为64M
+每一块赋值到不同的DataNode上
+8. 智能的客户端
+客户端能找到文件块的位置
+客户端能够直接访问DataNode中的文件位置
+9. 程序采用”数据就近”远些分配节点执行
+10. 客户端对文件没有缓存机制(No Data Caching)
+1.4 HDFS不擅长方面
+1. 低延迟数据访问
+比如毫秒级
+低延迟与高吞吐量
+2. 小文件存取
+占用NameNode大量内存
+寻到时间超过读取时间
+3. 并发写入,文件随机修改
+一个文件只能有一个写者
+仅支持append(不能修改)
+2 HDFS架构
+1.5 官方文档
+Documentation,	Hadoop1.2.1HDFS Users Guide
+Overview	,	Secondary NameNode		HDFS Design (设计介绍)
+NameNode和DataNode
+HDFS架构只有一个NameNode,是一个master server,控制和管理访问DataNode.整个集群当中有很多DataNode,是用户存取数据的节点.NameNode控制打开,关闭文件流,管理块和DataNode节点的对应关系.DataNode从NameNode中获取节点,进行添加删除等操作….
+
+
+
+1.6 HDFS架构-- --文件
+2.1.1 HDFS文件
+文件切分成块(默认大小64M),以块为单位,每个块有多个副本存储在不同的机器上,副本数可以在文件生成是指定(默认3)
+NameNode是主节点,存储文件的元数据如文件名,文件目录结构,文件属性(生成时间,副本数,文件权限),以及每个文件的块列表以及块所在的DataNode等等
+DataNode在本地文件系统存取文件块数据,以及块数据的校验和.
+数据块映射关系
+文件与数据块映射关系,DataNode与数据块映射关系
+保存映射关系占用较多内存
+NameNode启动时,可通过心跳信息重构映射关系,DataNode运行过程中定时汇报当前block信息
+NameNode重启速度慢
+合并fsimage与edits文件,生成最新的目录树
+接收DataNode的块信息
+2.1.2 文件Block(数据块)
+文件被切分成固定大小的数据块
+默认64M,可配置
+为何数据块如此之大
+数据传输时间超过寻找时间(高吞吐率)
+一个文件存储方式
+按照大小别切分成若干个block,存储到不同节点上,默认情况下每个block有三个副本
+[hadoop@hadoop-master data]$ pwd
+/opt/data/tmp/dfs/data
+[hadoop@hadoop-master data]$ ls current/
+
+可以创建,删除,移动或重命名文件,当文件创建,写入和关闭之后不能修改文件内容.
+2.1.3 HDFS文件权限
+与Linux文件权限类似.
+r:read;w:write;x:execute,权限x对文件忽略,对于文件夹表示是否云溪访问其内容.
+如果Linux系统用户张三使用hadoop命令创建一个文件,那么这个文件在HDFS中owner就是张三.
+HDFS的权限目的:阻止好人做错事,而不是阻止坏人做坏事.HDFS相信,你告诉为你是谁,为就认为你是谁..
+
+2.1.4 官网演示例子
+
+当一台机器坏掉后
+
+
+1.7 HDFS架构—NameNode
+
+HDFS架构—组件功能
+
+
+NameNode是一个中心服务器,单一节点(简化系统的设计和实现),负责管理文件系统的命名空间(namespace)以及客户端对文件的访问.
+文件操作.NanmeNode负责文件元数据的操作,DataNode负责处理文件内容的读写请求,跟文件内容香瓜你的数据流不经过NameNode,只会询问它跟哪个DataNode联系,否则NameNode会成为系统的瓶颈.
+副本存放在哪些DataNode上有NameNode来控制,根据全局情况做出块放置决定,读取文件NameNode尽量让用户先读取最近的副本,降低带块消耗和读取时延.
+NameNode全权管理数据块的复制,它周期性地从集群中的每个DataNode接收心跳信号和块状态报告(Blockreport).接收到心跳信号意味着该DataNode节点工作正常.块状态报告包含了一个该DataNode上所有数据块的列表.
+1.8 HDFS架构—DataNode
+一个数据块在DataNode以文件存储在磁盘上,包括两个文件,一个是数据本身,一个是元数据包括数据块的长度,块数据的校验和,以及时间戳
+DataNode启动后向NameNode注册,通过后,周期性(1小时)的向NameNode上报告所有有的块信息.
+心跳是每3秒一次,心跳返回的结果带有NameNode给该DataNode的命令如复制块数据到另一台机器,或删除某个数据块.如果超过10分钟没有收到某个DataNode的心跳,则认为该节点不可用.
+集群运行中可以安全加入和退出一些机器
+3 HDFS架构—保障可靠性的措施
+1.9 可靠性的措施
+1. 一个名字节点和多个数据节点
+2. 数据复制(冗余机制)
+存放的文职(机架感知策略)
+3. 故障检测
+1) 数据节点
+		心跳包(检测是否宕机)
+快报告(安全模式下检测)
+数据完整性检测(校验和比较)
+2) 名字节点(日志文件,镜像文件)
+4. 空间回收机制
+1.10 常见的三种错误
+1. 文件损坏  文件完整性
+	-FRC32校验	-用其他副本取代损坏的文件
+2. 网络或者机器失败	Heartbeat
+	-DataNode定期向NameNode发送Heartbeat
+3. NameNode挂掉		元数据信息
+	-FSImage(文件系统镜像),Editlog(操作日志)
+	-多份存储,当NameNode坏掉后,可以手动还原
+
+1.11 HDFS副本放置策略
+
+Hadoop 0.17之前~
+	-副本1:同机架的不同节点
+	-副本2:同机架的另一个节点
+	-副本3:不同机架另一个节点
+	-其他副本:随机挑选
+
+
+Hadoop0.17之后~
+	-副本1:同Client的节点上
+	-副本2:不同机架中的节点上
+	-副本3:同第二个副本的机架中的另一个节点上
+	-其他副本:随机挑选
+
+1.12 数据损坏(corruption)处理
+1. 当DataNode读取block的时候,他会计算checksum
+2. 如果计算后的checksum,与block创建时值不一样,说明该block已经损坏.
+3. Client读取其他DN上的block.
+4. NameNode标记该块已经损坏,然后复制block达到预期设置的文件备份数.
+5. DataNode在其他文件创建后三周验证其checksum.
+
+
+4 HDFS工作原理
+1.13 HDFS文件读取流程
+
+
+1. Client调用FileSystem.open()方法:
+1) FileSystem通过RPC与NN通信,NN返回该文件的部分或全部block列表(含有block拷贝的DN地址).
+2) 选取距离客户端最近的DN建立连接,读取block,返回FSDatalnputStream.
+2. Client调用流的read()方法:
+1) 当读到block结尾时,FSDatalnputStream关闭与当前DN的连接,并为读取下一个block寻找最近DN.
+2) 读取完一个block都会进行checksum验证,如果读取DN是出现错误,客户端会通知NN,然后再从下一个拥有该block拷贝的DN继续读.
+3) 如果block列表读完后,文件还未结束,FileSylstem会继续从NN获取下一批block列表.
+4) 关闭FSDatalnputStream
+1.14 HDFS文件写入流程
+
+
+1. Client调用FileSystem的create()方法:
+1) FileSystem向NN放出请求,在NN的namespace里面创建一新文件,但是并不关联任何块.
+2) NN检查文件是否已存在,操作权限. 如果检查通过,NN记录新文件信息,并在某一个DN上创建数据块.
+3) 返回FSDataOutputStream,将Client引导至该数据块执行写入操作.
+2. Client调用输出流的write()方法:	HDFS默认将每个数据块放置3份. FSDataOutputStream将数据首先写到第一节点,第一节点将数据包传送并写入第二个节点,第二节点第三几点.返回结果
+3. Client调用流的close()方法:	flush缓冲区的数据包,block完成复制份数后,NN返回成功消息.
+这些内容在HDFS的文件读写篇中详细介绍
+5 HDFS与其他系统
+1.15 HDFS与MapReduce结合
+1. MapReduce作业输入数据来自HDFS
+HDFS分块存储数据,默认每个MapTask处理一个数据库
+2. MapReduce作业的最终结果写入HDFS
+确保数据安全可靠,可以为下一个作业的数据
+3. MapReduce与HDFS关系
+低耦合,MapReduce可以与其他分布式文件系统结合,HDFS之上可以是其他计算框架例如(stom,spark等)
+1.16 HDFS与Hbase结合
+1. Hbase中的文件
+操作日志文件WAL,数据索引文件Hfile(storefile)
+2. HDFS为Hbase提供可靠的数据存放服务
+数据三副本,安全可靠
+3. HDFS为Hbase提供数据共享服务
+Hbase不同服务可从HDFS上存取数据
+6 HDFS2.0
+hadoop1.x中HDFS1.0的NameNode存在单点故障问题,可能会丢失文件
+另外单点NameNode内存有限,不适合存储小文件之类,(要存储Block等元数据,占用大量内存,一个NamNode承载的集群规模非常有限),这样形成了NameNode HA(高可用)和NameNode Federation(NameNode联邦:内存可扩展性方面)
+1.17 NameNode HA
+基于NFS贡献存储解决方案
+基于Bookeeper结局方案
+基于Qurom Journal Mamager(QJM)结局方案
+如图NameNode HA架构视图
+两个NameNode:主Active和备Standby,两个NameNode的共享信息写到共享的存储系统上,备用Standby的NameNode通过共享信息,保持信息同步,如此一点主NamNode挂掉有,NameNode会热切(马上切换)到备用的Standby NamNode,保证不出现单节点故障问题.
+Zk(zookeeper)用来管理两个NameNode,当主NameNode挂掉后,由ZK会将Client所有的访问都切换到替换过的NameNode上
+
+1.18 NameNode Federation
+多个NameNode,每个分管一部分目录,NameNode共用DataNode
+
+NameNode联邦
+用来解决内存受限,扩展受限的问题,在集群中可以建立多个NamNode,每个NameNode分管HDFS的一部分目录(不同的生产线,有不同的目录,不同的目录交给不同的NameNode管理),所有的NameNode的数据同样存储在DataNode数据节点上,即NameNode分管一块目录,DataNode混用(和HDFS1.0的DataNode相同)
+这样NameNode的内容受限问题解决了,保证了可扩展性,另外每个NameNode分管,形成了隔离性,互不影响.
+问题:
+通过以上解决方案,每个Namode都是不同的,即还是单一的(有单点故障问题),然后以如下连个节点共同管理一个目录(加入NameNode HA方案)来保证NameNode的高可用性
+
+7 HDFS架构—Client&SNN
+1.19 Client
+1. 文件切分	(客户端文件上传通过NameNode,先切分)
+2. 与NameNode交互,获取文件位置	(存取都需要经过NameNode)
+3. 与DataNode交互,读取或者写入数据
+4. 管理HDFS
+5. 访问HDFS	(浏览器,shell,代码,API方式)
+1.20 Secondary NameNode
+1. 并非NameNode的热备份(可以作冷备份)
+2. 辅助NameNode,分担其工作量
+3. 定期合并fsimage和fsedits,推送给NameNode;
+4. 在紧急情况下,可辅助恢复NameNode.
+7.1.1 镜像文件详解:
+NameNode两个重要文件
+fsimage:	元数据镜像文件(保存文件系统的目录树)
+edits:	元数据操作日志(针对目录树的修改操作)
+元数据镜像
+a) 内存中保存一份最新的
+b) 内存中的镜像=fsiamge+edits
+定期合并fsiamge与edits
+a) Edits文件过大将导致NameNode重启速度慢
+b) Secondary NameNode负责定期合并它们
+(每一个小时合并内存中的元数据镜像和日志到新的fsimage和新的fsedits)
+
+fsimage:文件系统镜像文件,edits日志文件
+当NameNode启动后,文件数据加载内存中,同时写入到本地文件当中,fsimage就是这个本地文件.Client对NameNode进行读写的操作,会产生对应的日志,这个日志保存在fsedits.随着写入日志的增加,日志文件会越来越大,Secondary NameNode会定期把fsimage和fsedits合并为新的文件,日志文件少了,HDFS启动会加快
+7.1.2 合并步骤
+1. Secondary NN通知NameNode切换editlog.
+2. Secondary NN从NameNode获取fsimage和editlog(通过http方式).
+3. Secondary NN将fsimage载入内存,然后开始合并editlog.
+4. Secondary NN将新的fsimage发会给NameNode
+5. NameNode用心的fsimage替换就的fsimage.
+8 HDFS网络拓扑
+Job Tracker和Name Node分别是MapReduce和HDFS的主节点(master),slave中为jobtrack和DataNode
+
+Hadoop Clustre(集群)在线上的机架拓扑(参考机架拓扑)
+
+1.21 在使用HDFS中有六步操作
+写入: Load data into the cluster(HDFS writes)
+分析: Analyze the data(Map Redece)
+存储: Store results in the cluster(HDFS wirtes)
+读取:Read the results from the cluster(HDFS reads)
+过程分析
+文件切分: Clietn consults Name Node
+写入: Client wirtes block directly to one Data Node
+复制副本: Data Node replicates block
+下一个block: Cycle repeats for next block
+
+在当中有一个机架感知Hadoop Rack Awareness:
+
+第一个副本放置在1个机架上,另外两个副本存放在另外两个副本,一整个机架挂掉后,还有可用的副本.
+准备写入工作模拟图:
+Client向NamNode写入请求,NameNode返回可用DataNode,Client确认DataNode准备状态
+
+流式写入Pipelined Write
+Client向DataNode中写入,然后依次写入到DataNode 5,DataNode5
+
+写入完成后
+DataNode依次向NameNode和Client汇报,如果还有下一个Block,开始下一个Block写入
+
+写入可也能够存在在多台机架上跨网络Multi-block Replication Pipeline
+3个Block和3个副本,都是通过流水线方式写入
+
+Client writes Span the HDFS Cluster
+写入过程Client充分利用各个节点上的网络带宽,写入到各个节点,(分布式写入)
+
+三个副本分别写入到多个机架多个节点上
+
+DataNode向NameNode发送心跳,保持联系
+DataNode每10天发送块报告NameNode从块报告中更新块元数据信息
+心跳通过TCP每3秒一次,如果没有发送,NameNode就会认为你已经挂掉,将其中的数据转移到另外的节点上
+如果NameNode挂掉,HDFS就瘫痪.
+
+失去心跳意味着丢失节点
+NamNode会将统计元数据,找出受到影响的Data
+NameNode通过机架感知,命令另外一个Data Node将受影响的Data复制一份,保持副本数始终未3个
+
+Secondary Nameme Node
+
+SNN不是一个NameNode的热备份
+每1小时连接一次NameNode ,将复制NamNode的元数据(edit和fsimage)信息合并保持
+如果NameNode挂掉后,可用用过SecondaryNameNode保存的镜像文件恢复,但是最后1小时的元数据信息和操作日志将无法恢复
+
+文件读取
+
+一个文件三个Block,分别存在不同的机架和节点上.
+Client向NameNode提出文件读取请求,NamNode返回文件每个block在各个DataNode的list(这个list的DataNode顺序是按照机架感知排序好的).
+Client按照顺序优先读取每个Block的第一个DataNode
+如果Client就在Data Node3上,NameNode将优先返回与Client同一个机架上的副本(如下图)
+
+数据经过Map处理时候
+Map将会在数据本地运行计算,JobTracker发送Jave code到要处理的数据每个文件Block的DataNode上
+
+
+
+优先读取本地的数据,如果处理的数据data不在本地,HDFS将优先复制读取与Jobtask的DataNode最近的block; 优先本节点,然后同机架节点,然后其他机架的节点
+
+Reduce
+经过Map后将结果复制给Reduce Task所在的节点DataNode3,Reduce合并结果数据并写入到HDFS上,以供Client读取
+
+
+具体逻辑过程在MapReduce中介绍
+如果存在这样的问题
+两个机架,计算容量不够,又增加两个机架,没有数据但有计算资源.如果在新增的机架上进行计算,就需要跨机架复制读取文件所有的块数据,这样讲占用大量的带宽并有很大延迟.HDFS可以通过以下方式解决:
+Cluster Balancing
+Balancing工具:打开Balancer命令脚本,Banancer将在后台执行,但不会占用大量的带宽,限制带宽为1M/s,基本不会影响线上任务
+9 HDFS Shell常用命令
+HDFS Java API使用
+HDFS 作业练习
+
+1.22 HDFS Shell命令—文件命令
+9.1.1 FS URI
+调用文件系统(FS)Shell命令使用 bin/hadoop fs的形式
+所有的FS Shell命令使用URI路径作为参数
+URI格式是scheme://authority/path.	HDFS的scheme是hdfs, 对本地文件系统,scheme是file.
+其中scheme和authority参数都是可选的,如果未加指定,机会使用配置中的指定的默认scheme.	例如:
+/parent/child可以表示成hdfs://namenode:namenodePort/parent/child,或者更简单的/parent/child(假设配置文件是namenode:namenodePort)
+大多受FS Shell命令的行为和对应的Unix Shell命令类似
+9.1.2 帮助文档
+
+[hadoop@hadoop-master ~]$ hadoop fs –help
+hadoop fs is the command to execute fs commands. The full syntax is:
+hadoop fs [-fs <local | file system URI>] [-conf <configuration file>]
+	[-D <property=value>] [-ls <path>] [-lsr <path>] [-du <path>]
+	[-dus <path>] [-mv <src> <dst>] [-cp <src> <dst>] [-rm [-skipTrash] <src>]
+	[-rmr [-skipTrash] <src>] [-put <localsrc> ... <dst>] [-copyFromLocal <localsrc> ... <dst>]
+	[-moveFromLocal <localsrc> ... <dst>] [-get [-ignoreCrc] [-crc] <src> <localdst>
+	[-getmerge <src> <localdst> [addnl]] [-cat <src>]
+	[-copyToLocal [-ignoreCrc] [-crc] <src> <localdst>] [-moveToLocal <src> <localdst>]
+	[-mkdir <path>] [-report] [-setrep [-R] [-w] <rep> <path/file>]
+	[-touchz <path>] [-test -[ezd] <path>] [-stat [format] <path>]
+	[-tail [-f] <path>] [-text <path>]
+	[-chmod [-R] <MODE[,MODE]... | OCTALMODE> PATH...]
+	[-chown [-R] [OWNER][:[GROUP]] PATH...]
+	[-chgrp [-R] GROUP PATH...]
+	[-count[-q] <path>]
+	[-help [cmd]]
+1. 遍历目录  [-ls <path>]	[-lsr <path>]
+[hadoop@hadoop-master ~]$ hadoop fs -ls /
+Found 2 items
+drwxr-xr-x   - hadoop supergroup          0 2016-04-20 06:42 /opt
+drwxr-xr-x   - hadoop supergroup          0 2016-04-20 06:42 /wc
+本地创建一个01data文件,写入Hello Hadoop
+[hadoop@hadoop-master ~]$ mkdir data
+[hadoop@hadoop-master ~]$ touch data/01data
+[hadoop@hadoop-master ~]$ vim data/01data
+2. 创建目录	[-mkdir <path>]
+[hadoop@hadoop-master ~]$ hadoop fs -mkdir /opt/data/test
+[hadoop@hadoop-master ~]$ hadoop fs -ls /opt/data
+Found 2 items
+drwxr-xr-x   - hadoop supergroup          0 2016-04-20 22:01 /opt/data/test
+drwxr-xr-x   - hadoop supergroup          0 2016-04-20 19:10 /opt/data/tmp
+3. 上传本地文件	[-put <localsrc> ... <dst>]
+[hadoop@hadoop-master ~]$ hadoop fs -put ~/data/01data /opt/data/test
+4. 重命名	[-mv <src> <dst>]
+[hadoop@hadoop-master ~]$ hadoop fs -mv /opt/data/test/01data /opt/data/test/02data
+[hadoop@hadoop-master ~]$ hadoop fs -ls /opt/data/test/
+Found 1 items
+-rw-r--r--   1 hadoop supergroup         13 2016-04-20 22:28 /opt/data/test/02data
+5. 查看文件内容	[-text <path>]
+[hadoop@hadoop-master ~]$ hadoop fs -text /opt/data/test/02data
+Hello Hadoop
+6. 复制文件	[-cp <src> <dst>]
+[hadoop@hadoop-master ~]$ hadoop fs -cp /opt/data/test/02data /opt/data/test/02data.cp
+[hadoop@hadoop-master ~]$ hadoop fs -text /opt/data/test/02data.cp
+Hello Hadoop
+7. 删除文件操作	[-rm [-skipTrash] <src>]
+[hadoop@hadoop-master ~]$ hadoop fs -rm /opt/data/test/02data
+Deleted hdfs://hadoop-master.dragon.org:9000/opt/data/test/02data
+8. 删除文件夹	[-rmr [-skipTrash] <src>]
+[hadoop@hadoop-master ~]$ hadoop fs -rmr /opt/data/test
+Deleted hdfs://hadoop-master.dragon.org:9000/opt/data/test
+9. 下载文件 	[-get [-ignoreCrc] [-crc] <src> <localdst>
+[hadoop@hadoop-master ~]$ hadoop fs -get /wc/input/core-site.xml ./data
+[hadoop@hadoop-master ~]$ ls data
+01data  core-site.xml
+
+1.23 HDFS Shell命令—管理命令
+[hadoop@hadoop-master ~]$ hadoop dfsadmin
+Usage: java DFSAdmin
+           [-report]
+           [-safemode enter | leave | get | wait]
+           [-saveNamespace]
+           [-refreshNodes]
+           [-finalizeUpgrade]
+           [-upgradeProgress status | details | force]
+           [-metasave filename]
+           [-refreshServiceAcl]
+           [-refreshUserToGroupsMappings]
+           [-refreshSuperUserGroupsConfiguration]
+           [-setQuota <quota> <dirname>...<dirname>]
+           [-clrQuota <dirname>...<dirname>]
+           [-setSpaceQuota <quota> <dirname>...<dirname>]
+           [-clrSpaceQuota <dirname>...<dirname>]
+           [-setBalancerBandwidth <bandwidth in bytes per second>]
+           [-help [cmd]]
+-safemode enter:开启后文件只读状态,不可修改
+
+-refreshUserxx:跟新信息
+-setSpaceQuota:设置文件最大容量
+
+清除设置
+
+-report:打印当前HDFS信息状态
+
+1.24 HDFS Shell命令—文件管理工具
+[hadoop@hadoop-master ~]$ hadoop fsck
+Usage: DFSck <path> [-move | -delete | -openforwrite] [-files [-blocks [-locations | -racks]]]
+	<path>	start checking from this path
+	-move	move corrupted files to /lost+found
+	-delete	delete corrupted files
+	-files	print out files being checked
+	-openforwrite	print out files opened for write
+	-blocks	print out block report
+	-locations	print out locations for every block
+	-racks	print out network topology for data-node locations
+检查hdfs中文件的健康状况
+查找确实的块以及过少或过多副本的块
+ [hadoop@master conf]$ hadoop fsck /data/test/mysql-5.5.47.tar.gz
+
+查看一个文件的所有数据块位置
+[hadoop@master conf]$ hadoop fsck /data/test/mysql-5.5.47.tar.gz -file -block -location
+
+删除损坏的数据库
+
+1.25 HDFS Shell命令—任务调度命令
+[hadoop@hadoop-master ~]$ hadoop job
+Usage: JobClient <command> <args>
+	[-submit <job-file>]
+	[-status <job-id>]
+	[-counter <job-id> <group-name> <counter-name>]
+	[-kill <job-id>]
+	[-set-priority <job-id> <priority>]. Valid values for priorities are: VERY_HIGH HIGH NORMAL LOW VERY_LOW
+	[-events <job-id> <from-event-#> <#-of-events>]
+	[-history <jobOutputDir>]
+	[-list [all]]
+	[-list-active-trackers]
+	[-list-blacklisted-trackers]
+	[-list-attempt-ids <job-id> <task-type> <task-state>]
+	[-kill-task <task-id>]
+	[-fail-task <task-id>]
+1.26 HDFS Shell数据均衡器
+balancer
+数据块重分布
+bin/start-balancer.sh  -threshold <percentage of disk capacity>
+
+percentage of disk capacity
+HSFS达到平衡状态的磁盘使用率偏差值
+值越低个基点越平衡,但消耗时间也更长

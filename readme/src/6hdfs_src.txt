@@ -1,0 +1,131 @@
+超大文件,检测和快速应对硬件故障,流式数据访问,简化一致性模型,低延迟数据访问,大量小文件,多用户写入文件,修改文件.
+HDFSClient,NameNode,DataNode,SecondaryNameNode
+体系结构:1.Block,2.NN,SNN,3,DN,4Client:Java API,Thrift...
+源码:
+hdfs.util,hdfs.security基础包
+hdfs实现包: hdfs.server.common,hdfs.protocol,hdfs.server.namenode,hfds.server.dsatanode
+hdfs应用包:hdfs.tools,hdfs.server.balancer
+WebHDFS相关: hdfs.web.resorurces,hdfs.server.namenode.web.resources,hdfs.server.datanode.web.resources..
+远程构成接口:
+org.apache.hadoop.hdfs.protocol
+ClientProtocol,ClientDatanodeProtocol,DatanodePRotocol,InterDatanodeProtocol,NamenodeProtocol
+与客户端相关:ClientProtocol,ClientDatanodeProtocol
+(1)Block(2)DatanodeID,DatanodeInfo(3)HdfsFileStatus,DirectoryListing
+1.ClientProtocol
+Hadoop文件系统元数据相关功能,对HDFS状态查询,设置能力dfsadmin..P230
+	(1)文件/目录事务setPermissiion(),setOwner(),setReplication(),delete()
+	(2)写数据需要的方法,create()中的addBlock(),abandonBlock(),fsync(),complete()
+	(3)读数据需要的方法,getBlockLocations(),reprotBadBlocks()
+	(4)工具dfsadmin依赖的方法,setQuota(),setSafeMode(),refreshNode(),distributedUpgradeProgress(),finalizeUpgrade()
+HDFS各服务器之间:
+DataNodeProtocol,InterDatanodeProtocol
+1.DataNodePRotocol
+	(1),DatanodeRegistration,NamespaceInfo注册使用
+	(2)数据节点启动和心跳:启动DN,握手versionRequest(),注册register(),数据块上报blockReport()和心跳sendHeartbeat()
+	(3),NN指令:DatanodeCommand
+	(4),reportBadBlock()
+	(5).errorReport(),processUpgradeCommand()
+2.InterDatanodeProtocol
+	getBlockMetaDataInfo(),startBlockRecovery(),updateBlock()
+	用于处理异常情况
+2.NamenodeProtocol
+	getBlocks(),getBlockKeys(),getEditLogSize()
+非远程过程调用:DataTransferProtocol
+	1.读数据,2写数据,3.其他接口P251
+NN和SNN非IPC接口:
+	HTTP超文本协议P253
+
+HDFS主要流程
+	Client到NN的文件和目录操作(rename,mkdir)-->IPC调用NN.mkdir-->return:true
+	Client进行delete-->NN执行(标记操作设计的数据块,记录delete到log中)当DN发送心跳后,在应答中通过DatanodeCommand命令DN进行delete
+	Client读流程
+	HDFS Client-->FileSystem.open()
+	-->DFS.create FSDataInputStream[
+		1.ClientProtocol.getBlockLocations()-->确定Block保存位置
+		2.FSDataInputStream.read(),通过数据节点的流接口,和最近的DN建立联系
+		3.反复调用read,数据从DN到Client,
+		4.当数据达到Block末端时,DFSInputStream关闭连接,通过getBlockLocations()获取下一个Block的位置-->FSDataInputStream.read()再次寻找最佳DN
+		5.当DN发生错误,Client会尝试获取下一个Block的DN,同时记住故障DN,读取数据应打包中,不但包含DN,还包含校验和
+	Client写流程:
+		1.Client.open()-->远程调用DistributedFileSystem.create()
+			create(),检查(路径,存在,NN状态,权限等)-->创建空文件-->写edits
+			然后DFS讲DFSOutputStream对象包含在FSDataOutputStream中,返回给Client
+		-->DFSOutputSteram
+		2.DFSOutputStream.write()-->
+			3.addBlock(),DFSOutputStream向NN申请Block,返回LocatedBlock对象
+			4.write package,通过上述信息,与DN建立数据流管道locs-->Client写入FSDataOutputStream流中的数据被分成一个个文件包-->放入DFSOutput对象内部队列-->队列中的文件被打包成数据包,发往数据流管道-->流经管道各个DN,持久化
+			5.-->ack确认包(依次return到Client-->Client将包从内部队列移除)
+			6.-->blockReceived(写完一个Block后,DN通过和NN远程blockRedeived()方法提交Block,如果还有数据,DFSOutputStream再次调用addBlock()
+			8.complete(Client完成数据写入,调用close()-->DFSOutputStream数据队列文件收到应答后,使用ClientProtocol.complete()通知NN管理文件,完成写流程)
+
+
+NN和SNN:
+	Client对HDFS目录操作-->NN进行edit-->
+	SNN通过NamenodeProtocol.getEditLogSize(),如果editLog>124M-->rollEditLog(),启动Checkpoint{
+		-->1.NN创建一个新的edit.new对后续文件元数据修改进行录
+		-->2.SNN通过HTTP接口读取NN的editlog和fsimage(系列化系统目录和文件的i-node:表征一个文件或目录的元数据信息,以及文件的replication,修改和访问时间等)读取到本地,并在内存中合并-->合并结果输出fsimage.ckpt
+		-->3.SNN再次HTTP请求,通知NN准备
+		-->4.NN通过HTTP.GET()下载SNN的fsimage.ckpt-->命名(覆盖原来的fsimage,形成新的fsimage,同事edit.new改名为edit)
+		-->5.SNN通过NamenodeProtocol.rollFsImage(),完成Checkpoint
+
+=======================
+DN节点实现:
+blockBeingWritten,current,detache,tmp...
+
+DN存储DataStorage继承体系:
+StorageInfo<--Storage<--DataStorage,NNStorage
+StorageInfo<--NamespaceInfo,NamenodeRegistration,CheckpointSignature
+StorageInfo三个字段:layoutVersion,namespaceID,clusterID,cTime以及get/set
+NamespaceInfo和CheckpointSignature
+StorageDirectory.analyzeStorage,doRecover()涉及升级
+DataStorage.format()创建存储目录结果,通过StorageDirectory.clearDirectory()删除目录重建,为Version复制持久化...
+
+DN升级:
+	(1):DataStorage.doUpgrade(DataNode, StorageDirectory, NamespaceInfo)
+	(2):升级回滚
+	DataStorage.doRollback(StorageDirectory, NamespaceInfo)
+	(3)升级提交
+	DataStorage.doFinalize(StorageDirectory)
+存储空间状态:(状态机)
+Storage通过枚举StorageState存储空间可能状态,
+ public enum StorageState {
+    NON_EXISTENT,非formart启动时,目录不存在或不可写-->format
+    NOT_FORMATTED,format启动,目录不存在或没有被格式化-->创建version
+    NORMAL,正常工作,目录改名current-->previous.tmp-->
+    RECOVER_UPGRADE,previous.tmp存在,current/version不存在,恢复模式
+    COMPLETE_UPGRADE,previous.tmp存在,current/version存在
+    COMPLETE_FINALIZE,
+    COMPLETE_ROLLBACK,
+    RECOVER_ROLLBACK,
+    COMPLETE_CHECKPOINT,
+    RECOVER_CHECKPOINT,..略P276
+文件系统数据集工作机制
+1.FSDatasetMBean<--FsDatasetSpi<V extends FsVolumeSpi>接口<--FsDatasetImpl
+FSDatasetMBean是符合Java管理扩展(Java Management eXtensions,JMX)福if按的课管理资源MBean.
+FsVolumeSpi<--FsVolumeImpl
+...
+DN启停
+DataNode.main()
+-->secureMain(args, null)
+	-->createDataNode(args, null, resources)
+		-->instantiateDataNode(args, conf, resources)
+			-->makeInstance(dataLocations, conf, resources)
+				-->new DataNode(conf, locations, resources)
+					-->startDataNode(conf, dataDirs, resources)
+		-->dn.runDatanodeDaemon()
+	-->datanode.join();
+主要初始化工作startDataNode,P322
+
+NameNode实现
+INodeDirectory
+INodeFile
+
+
+
+
+
+
+
+
+
+

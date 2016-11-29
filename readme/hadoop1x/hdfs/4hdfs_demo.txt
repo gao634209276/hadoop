@@ -1,0 +1,117 @@
+1 HDFS实际应用场合值文件合并
+场景
+合并小文件,存放到HDFS上.例如,当需要分析来自许多服务器的Apache入职时,各个日志文件可能比较小,然而Hadoop更合适处理大文件,效率会更高,此时就需要合并分散的文件.如果先将所有文件合并,再复制上传到HDFS上的话,需要占用本地计算机的大量次哦按空间.采取在想HDFS复制上传文件的过程中将小文件进行合并,效果会更好.
+开发程序
+开发一个PutMege程序,用于将合并文件后方如HDFS.
+1.1 命令getmerge
+1.1.1 先看hadoop的getmeger命令演示:
+1. 向hdfs中上传两个文件,vim编辑不同的内容来.
+[hadoop@hadoop-master data]$ hadoop fs -put 01.data 02.data /opt/data/test/
+[hadoop@hadoop-master data]$ hadoop fs -ls /opt/data/test
+Found 2 items
+-rw-r--r--   1 hadoop supergroup         44 2016-04-23 02:26 /opt/data/test/01.data
+-rw-r--r--   1 hadoop supergroup         61 2016-04-23 02:26 /opt/data/test/02.data
+2. 使用getmege命令合并下载:
+[hadoop@hadoop-master data]$ hadoop fs -getmerge /opt/data/test 03.data
+16/04/23 02:28:50 INFO util.NativeCodeLoader: Loaded the native-hadoop library
+[hadoop@hadoop-master data]$ ls
+1. data  02.data  03.data
+3. 查看03.data内容是01.data和02.data内容的合并:
+[hadoop@hadoop-master data]$ cat 03.data
+01data
+Hello Hadoop
+-----------------------
+02 data
+Hello Hadoop
+world
+hdfs get
+-----------------------
+1.1.2 查看getmege命令的源代码:
+追踪bin/hadoop脚本:
+elif [ "$COMMAND" = "fs" ] ; then
+  CLASS=org.apache.hadoop.fs.FsShell
+  HADOOP_OPTS="$HADOOP_OPTS $HADOOP_CLIENT_OPTS"
+在hadoop源码中找出org.apache.hadoop.fs.FsShell类,查找getmege对应的方法如下:
+
+void copyMergeToLocal(String srcf, Path dst) throws IOException {
+    copyMergeToLocal(srcf, dst, false);
+  }
+此方法调用了 copyMergeToLocal(String srcf, Path dst, boolean endline):
+void copyMergeToLocal(String srcf, Path dst, boolean endline)
+
+从代码中看到此方法又调用了FileUtil.copyMerge(srcFs, srcs[i], FileSystem.getLocal(getConf()), dst, false, getConf(), "\n");
+
+可以看出这个合并功能的主要实现部分是copyMerge()方法实现的,代码如下:
+    OutputStream out = dstFS.create(dstFile);
+      FileStatus contents[] = srcFS.listStatus(srcDir);
+      for (int i = 0; i < contents.length; i++) {
+        if (!contents[i].isDir()) {
+          InputStream in = srcFS.open(contents[i].getPath());
+                     IOUtils.copyBytes(in, out, conf, false);
+            if (addString!=null)
+              out.write(addString.getBytes("UTF-8"));
+                     in.close();
+        }
+      }
+可以看到merge核心代码是通过OutputStream和InputStream操作
+对Fs中的目录通过FileStatus对象进行遍历判断,然后使用FS.open(path)生成InputStream
+然后使用IOUtils.copyBytes(in,out,conf,false)将输入流输出到输出流out中,然后在write()到目标文件中.关闭输入流in.
+
+1.2 用于将一组HDFS文件在复制到本地计算机一起进行合并
+文件的上传下载,其实就是字节字符流的读写操作.
+1. 本地每个文件打开输入流.
+Configuration conf = new Configuration();
+FileSystem localFs = FileSystem.getLocal(conf);
+FileStatus[] status = localFs.listStatus(localPath);
+FSDataInputStream fsDataInputStream = localFs.open(path);
+for (FileStatus fileStatus : status) {
+			Path path = fileStatus.getPath();
+			byte[] buffer = new byte[1024];
+			fsDataInputStream.read(buffer);
+2. HDFS文件打开输出流,进行内容写入
+FileSystem hdfs = FileSystem.get(conf);
+FSDataOutputStream fsDataOutputStream = hdfs.create(hdfsPath);
+fsDataOutputStream.write(buffer, 0, len);
+3. 循环操作
+对buffer进行while循环,条件为fsDataInputStream.read(buffer)返回的len,循环体中进行
+fsDataOutputStream.write(buffer,0,len)
+4. 关闭流
+fsDataInputStream.close();
+fsDataOutputStream.close();
+2 HDFS实际应用场景之网盘应用
+1.3 演示 [百度网盘]功能
+1.4 总结功能,提出疑问—Hadoop HDFS如何实现?
+1.5 分析,讲解—针对HDFS
+1.6 <<Hadoop云盘系统>>博文介绍
+http://blog.csdn.net/jtlyuan/article/details/7980826
+1.7 模拟实现网盘
+3 HDFS Shell 和Java API练习
+hdfs的组成部分有哪些,分别解释
+hdfs的高可靠性如何实现
+hdfs的常用shell命令有哪些
+hdfs的常用java api有哪些
+请用shell命令实现目录,文件的增删改查
+请用java api实现目录,文件的增删改查
+
+1.8 考察对HDFS文件读写流程和数据块副本存放策略的理解
+如下图所示,一个Hadoop集群分为20个节点构成,其中每5个节点放到一个机架上,用户想HDFS中写入文件apache.log,该文件大小为100Mb,问题如下:
+
+1. 默认情况下,文件file.txt将被HDFS气氛成几个block,为什么?
+2. 文件file.txt被切分成block存储到不同节点上,该功能是由下面那些组件完成的:
+A客户端
+B NameNode
+C DataNode
+D 用户
+3. 如果将节点nodeX作为HDFS客户端,假设副本数为3,则一个block的三个副本可能存放都那三个节点上(以下每个选项分别对应第一个,第二个和第三个副本的存放位置),为什么?
+A: node11,node12,node13
+B: node11,node21,node31
+C: node11,node12,node21
+D: node21,node41,node45
+E: node12,node15,node41
+F: node11,node12,node25
+4. 如果将节点node11作为HDFS客户端,假设副本数为3,则一个block的三个部分可能存放到哪三个节点上,为什么
+5. 假设一个文件的一个block存放在node31,node41和node42上,那么
+	当node33是HDFS客户端是,用户读取该block是,间有限选择哪个节点上的副本数,为什么
+	如果node43是HDFS客户端呢?为什么
+6. 假设HDFS客户端为node11,用户A想要将文件apache.log写到HDFS上,该文件大小100M,假设用户配置的文件block大小为64M,请结合你在问题4中选择一个选项,描述该文件写入HDFS的整个流程(请用步骤1,步骤2,….描述)
+7. 假设用户B想从HDFS上读取apache.log,结合问题5,请描述真个流程,分步骤描述

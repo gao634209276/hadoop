@@ -1,0 +1,614 @@
+1. 目录
+1	MapReduce架构原理	2
+1.1	MapReduce定义	3
+1.1.1	MapRecude特点	3
+1.1.2	不擅长的方面	3
+1.2	MapReduce应用	3
+1.2.1	应用场景	3
+1.3	MapReduce编程模型	4
+1.3.1	InputFormat	6
+1.3.2	Split与Block	6
+1.3.3	Combiner	7
+1.3.4	Partitioner	7
+2	MapRecude计算架构	8
+2.1	MapReduce—分布式计算框架	8
+2.1.1	JobTracker和TaskTracker	8
+2.1.2	Map Task和Reduce Task	9
+2.1.3	JobTracker和TaskTracker交互	9
+2.2	MapReduce计算框架-容错性	9
+2.3	MapReduce计算框架-资源组织方式	9
+2.4	MapReduce计算框架-任务调度器	10
+2.4.1	调度器分类:	11
+2.5	MapReduce计算框架-数据本地性	13
+2.6	MapReduce计算框架-推测执行机制	14
+2.7	MapReduce计算框架-任务并行执行	14
+3	案例演示分析M-R	14
+3.1.1	shell命令演示WordCount	15
+3.1.2	浏览器产看运行过程	15
+3.2	MapReduce基本流程:	17
+3.2.1	map任务处理	17
+3.2.2	reduce任务处理	17
+3.3	使用Hadoop计算PI	18
+3.3.1	运行PI计算程序	18
+3.3.2	Job Web UI监控图	18
+3.3.3	查看shell命令行输出结果	19
+3.3.4	增加map数量运行	19
+4	编写MapReduce程序	20
+4.1	MapReduce八股文	21
+4.2	实现WordCount程序编写	21
+4.2.1	使用Eclipse编写MapReduce程序	21
+4.2.2	实现部分	22
+4.2.3	打包成jar包	23
+4.2.4	上传jar包上传到hadoop集群中	24
+4.2.5	使用hadoop jar命令运行	24
+4.2.6	验证是否正确,使用官方的wc.jar包运行:	26
+4.3	优化MyWordCount程序讲解GenericOptionsParser	26
+4.3.1	警告信息:	26
+4.3.2	GenericOptionsParser,Tool,ToolRunner三者之间的联系:	26
+4.3.3	在Client中增加代码	26
+5	安装Hadop Eclipse插件	27
+5.1	在Win7上编译Hadoop Eclipse 插件	28
+6	使用eclipse的hadoop插件创建hadoop项目和运行	30
+6.1	创建项目	30
+6.2	错误调试	30
+6.2.1	解决java.lang.UnsupportedClassVersionError问题	30
+6.2.2	错误: Connection refused:no further information	30
+6.2.3	Hadoop PriviledgedActionException	31
+6.3	参数输入方法2	31
+
+MapReduce的应用场景
+MapReduce编程模型
+MapReduce架构
+MapReduce调度器
+MapRduce配置部署
+常见MapReduce应用场景
+总结
+
+1 MapReduce架构原理
+
+Hadoop集群拓扑图
+
+1.1 MapReduce定义
+源于Coogle MapReduce论文,是Google MapReduce的克隆版
+一个分布式计算模型框架,解决海量数据的计算问题
+MapReduce将真个并行计算过程抽象到两个函数
+	Map(映射):对一些独立元素组成的列表的每个元素进行指定的操作,可以高度并行.
+	Reduec(化简):对一个列表的元素进行合并.
+一个简单的MapReduce程序只需要指定map(),reduce(),input和output,剩下的事有框架完成.
+
+1.1.1 MapRecude特点
+1. 易于编写
+2. 良好的扩展性
+3. 高容错性
+4. 适合PB级以上海量数据的离线处理
+1.1.2 不擅长的方面
+1. 实时计算
+像MySql一样,在毫秒级或者秒级内返回结果
+2. 流式计算
+MapReduce的输入数据集是静态的,不能动态变化,MapReduce吱声的设计特点决定了数据源不需是静态的
+3. DAG计算
+多个应用程序存在依赖关系,后一个应用程序的数据为前一个的输出,存在大量的IO问题,性能低下
+1.2 MapReduce应用
+1.2.1 应用场景
+有大量文件,里面存储了单词,且一个单词占一行,统计一个单词出现的次数
+搜索引擎中,统计最流行的K个搜索词
+简单的数据统计,比如网站pv,uv统计		(很多公司使用hive,pig统计,实际还是mr实现的)
+搜索引擎建索引	(谷歌内部统计)
+海量数据查找	(生物学匹配DNA查找)
+复杂数据分析算法实现	(mahout)
+聚类算法
+分类算法
+推荐算法
+图算法
+统计搜索词频率,帮助优化搜索词提示
+WordCount程序相当于编程的HelloWorld程序
+情况1:整个文件可以加载到内存中,sort datafile|uniq -c
+情况2:文件太大不能加载到内存中,但<word,count>可以放到内存中
+情况3:文件太大,<word,count>也不能加载到内存中
+MapReduce概括:
+将问题范化为:有个批文件(规模为TB,PB),如果统计浙西文件所有单词出现次数.
+方案:首先,分别统计每个文件中单词出现的次数,然后累加不同文件中同一个单词出现次数
+典型的MapRedcue过程,介绍1.4编程模型
+
+1.3 MapReduce编程模型
+Input:一系列key/value对
+用户提供两个函数实现:
+map(k,v)list(k1,v1)
+reduce(k1,list(v1))v2
+(k1,v1)是中间key/value结果对
+Output:一系列的k2/v2对
+
+MapReduce将作业的整个运行过程分为两个阶段,Map和Reduce阶段
+Map阶段由一定数量的Map Task组成
+输入数据分析:InputFormat(代码设置)
+输入数据处理:Mapper(代码实现)
+数据分组:Partitioner(代码设置)
+Reduce阶段由一定数据量的Reduce Task组成
+数据远程拷贝
+数据按照key排序
+数据处理:Reduce(代码实现)
+数据输出格式:OutputFormat(代码设置)
+
+
+
+MapReduce编程模型--外部物理结构
+
+1.3.1 InputFormat
+文件分片(InputSplit)方法
+处理跨行问题
+将分片数据解析成key/value对
+默认实现是TestInputFormat
+TestInputFormat
+key是行在文件中的偏移量,value是行内容
+若行被截断,则读取下一个block的前几个字符
+
+1.3.2 Split与Block
+1. Blok
+HDFS中最想的数据存储单元,默认为64兆
+2. Split
+MapReduce中最小计算单元,默认与Block一一对应
+3. Block与Split
+Split与Block是对应关系是任意的,可有用户控制
+1.3.3 Combiner
+
+Combiner可以看做local reducer
+合并相同的key对应的value(wc例子)
+通常与Reduce逻辑一样
+好处
+减少MapTask输出数量(磁盘IO),减少Reduce-Map网络传输数据量(网络IO)
+如何正确使用
+结果可叠加,Sum(Yes!),Average(No!)
+1.3.4 Partitioner
+Partitioner决定了Map Task输出的每条数据交个那个Reduce Task处理
+默认实现:hash(key)mode R
+R是Reduce Task数目,允许用户自定义
+很多情况自定义Partitioner
+比如”hash(hostname(URL))mode R” 确保相同域名的网页嫁给同一个Reduce Task处理
+
+
+2 MapRecude计算架构
+
+MapReduce相关概念
+JobTracker 负责接收用户提交的作业,负责启动,跟踪任务执行.
+TaskTracker负责执行有JobTracker分配的任务,管理各个任务在每个节点上的执行情况.
+Job,用户的每个计算请求,成为一个作业
+Task,每个作业,都需要拆开,交由多个服务器来完成,拆分出来的执行单位,就成为任务.
+Task分为MapTask和ReduceTask两种,分别进行Map操作和Reduce操作,一句Job设置的Map类和Reduce类
+2.1 MapReduce—分布式计算框架
+2.1.1 JobTracker和TaskTracker
+
+
+2.1.2 Map Task和Reduce Task
+
+2.1.3 JobTracker和TaskTracker交互
+
+2.2 MapReduce计算框架-容错性
+JobTracker
+单节点故障,一旦出现故障,这个集群不可用.
+TaskTracker
+周期性向JobTracker汇报心跳,一旦出现故障,上面所有任务将被调度到其他节点上
+MapTask/ReduceTask
+运行失败后,将被调度到其他节点上重新执行
+2.3 MapReduce计算框架-资源组织方式
+1. 机器用slot描述资源数量
+有管理员配置slot数目,分为map slot和reduce slot两种,从一定程度上,可以看做任务运行并发度
+2. Map slot
+可用于运行Map Task的资源,每个Map Task可使用一个或多个map slot
+3. Reduce slot
+可用于运行Reduce Task的资源,每个Reduce Task可使用一个或多个reduce slot
+2.4 MapReduce计算框架-任务调度器
+1. 基本作用
+根据节点资源(slot)使用情况和作业的要求,将任务调度到各个节点上执行
+2. 调度器考虑的因素
+作业优先级
+作业提交时间
+作业所在队列的资源限制
+
+过程分析:Client提交MapRedcue作业,JobTracker接收请求,调用initJob()函数,通知TaskScheduler调度器,对作业进行初始化
+JobTracker根据作业的要求和TaskTracker的心跳(TaskTrackerStatus)返回的节点资源(slot)使用情况,当发现空间计算节点请求新的任务askForNewTask后,JobTracker调用assign Tasks()方法,使TaskScheduler返回一定的task list,然后将task list分配(tasks-to-lauch)给TaskTracker
+TaskTracker接收任务后,开始投放Task运行
+TaskScheduler(作业或任务调度器)
+
+
+TaskSchedule通常将作业分为若干个job,当一个空闲的TaskTracker请求一个新的task时,TaskScheduler会根据需求分配合适的job,比如job6比较紧急,会首先将job6分内部的map task或reduce task(这里选择了map task)分配各TaskTracker
+
+有多个机架,多个交换机(Switch),尽量减少通过交换机跨机架调用数据运行task,这个都是有taskSchedule的机制处理分配task.
+2.4.1 调度器分类:
+FIFO批处理调度器(First In First Out)
+先来先服务(FIFO)调度器(单用户)
+
+调度器将Job按照先后顺序排列成queue,当有空闲的slot时候,调度器将先来的job1返回一个新的task分配出去.
+
+Capacity Scheduler 多用户调度器
+由Yahoo开源,共享几圈调度器
+以队列方式组织作业,每个对队列内部采用FIFO调度策略,每个队列分配一定比例资源,可限制每个用户使用资源量.
+这个调度器是很多公司使用的调度器作为线上调度器.
+
+向三个用户分别Job比例,三个Job队列可以同时运行
+Fair Scheduler 多用户调度器
+由Facebook开源的,共享集群调度器
+以队列方式组织作业;基于最小资源量(min share)与公平共享量(fair share)进行调度;作业优先级越高,分配到的资源越多
+例如:
+
+缺额:理想与现实之间的差值,(这个实际分配的资源与承诺分配的资源的差值叫做缺额) 按优先级大小分配资源比例,优先将资源分给缺额大的队列
+2.5 MapReduce计算框架-数据本地性
+什么是数据本地性(data locality)
+如果任务运行在他讲处理的数据所在的节点,则称该任务具有”数据本地性”
+本地性可避免跨节点或机架数据传输,提高运行效率
+数据本地性分类
+同节点(node-local)
+同机架(rack-local)
+其他(off-switch)
+例如图:
+
+一个文件3个副本,有8个block分别在hdfs系统的不同机架和主机上.
+有三个Task,其中Task1需要的数据在b1中
+通常TaskTrack和DataNode在同一个节点上,这是Task1所在节点上正好有Block1,这时候执行效率是最好的.
+如果Task2处理的数据是Block2,但Task2被分配到H4的TaskTracker上,这个节点上没有Block2,单同机架上的H5存在Block2,这时候,同机架处理数据就会有一点延迟
+如果Task3处理的数据是Block3,而Task3分配的TaskTracker所在的节点以及这个机架R3上都没有b3,这个时候,只能跨机架复制Block3,这时候延迟很大,性能最差
+2.6 MapReduce计算框架-推测执行机制
+作业完成时间取决于罪吗的任务完成时间
+一个作业有多干个Map任务和Reduce任务构成,因为引荐老化,软件Bug等,某些任务可能运行非常慢,
+推测执行机制
+发现拖后腿的任务,比如某个任务运行速度远鳗鱼任务平均速度,为拖后腿任务启动一个备份任务,同时运行,谁先运行完,则采用谁的结果
+有些时候不能启动推测执行机制
+任务间存在严重的负载倾斜,特殊任务,比如任务想数据库中写数据
+2.7 MapReduce计算框架-任务并行执行
+
+mapreduce会将代码程序自动的并行化
+3 案例演示分析M-R
+问题:
+有一批文件(规模为TB级或者PB级),如果统计这些文件中所有单词出现的次数
+方案:
+首先,分别统计每个文件中单词出现次数
+然后,累加不同文件中同一个单词出现次数;
+
+3.1.1 shell命令演示WordCount
+
+3.1.2 浏览器产看运行过程
+打开http://hadoop-master.dragon.org:50030/
+可以观察到运行中有3个Map任务,1个Reduce任务.
+
+这个图运行过程中可以看到先执行Map,然后再进行Reduce
+
+shell显示运行过程日志:
+
+
+输出文件/opt/wc/output:
+浏览器访问:http://hadoop-master:50075/
+
+3.2 MapReduce基本流程:
+
+
+3.2.1 map任务处理
+1. 读取输入文件内容,解析成key,value对.对输入文件的每一行,解析成key,value对.每一个键值对调用一次map函数.
+解析:
+key			value
+0			01 Hello Hadoop		01:1		Hello:1		Hadoop:1
+13			­­­-----------------			­­­-----------------:1
+2. 写自己的逻辑,对输入的key,value处理,转换成新的key,value输出
+map函数输出键值对:
+key 			value
+01			1
+Hello		1
+Hadoop		1
+3. 对输入的key,value进行分区
+partiton,进行分区
+4. 对不同分五的数据,按照key进行排序,分组. 相同key的value放到一个集合中.
+key			value
+01			1,1,1…
+5. (可选)分组后的数据进行归约.
+合并:
+key			value
+01			1+1+1..=3…
+3.2.2 reduce任务处理
+1. 对多个map任务的输出,按照不同的分区,通过网络copy到不同的reduce节点
+2. 对多个map任务的输出进行合并,排序. 写reduce函数自己的逻辑,对输入的key,value处理,转换成新的key,value输出.
+3. 把reduce的输出保存到文件中.
+3.3 使用Hadoop计算PI
+蒙地卡罗算法:
+3.3.1 运行PI计算程序
+hadoop jar hadoop-examples-1.2.1.jar pi 10 100
+这里10代表10个map数
+3.3.2 Job Web UI监控图
+浏览器代开job的jsp网页查看运行状态:
+http://hadoop-master.dragon.org:50030/jobtracker.jsp
+首先出现的是map/reduce
+状态:正在运行
+开始时间:
+hadoop版本:等等
+Cluster Summary是集群的总体概要:运行的map/reduce数等等
+
+Scheduling Information调度信息
+Running Jobs,运行的Job信息:
+
+completed Jobs结束的Job,Retired Jobs重试的Job,Local logs本地日志
+
+选择Jobid查看具体信息:
+第一行为Job名称,在hadoop-master主机上运行
+然后是运行的详细信息,User,JobName,File,Submit Host等
+下面的列表显示运行的进度,map数量,reduce数量
+
+最后这个是Map每个任务以百分比描述
+Reduce任务分为复制,排序,reduce三个过程
+
+3.3.3 查看shell命令行输出结果
+显示耗时20.479秒,计算的结果为3.1480000000000…
+
+3.3.4 增加map数量运行
+这个结果不准确,我们将命令中map个数的参数调大一点查看:
+[hadoop@hadoop-master hadoop-1.2.1]$ hadoop jar hadoop-examples-1.2.1.jar pi 100 100
+可以看到正在运行的Job,完成的Job个数
+
+点击Job名称进入后查看具体正在运行的情况:
+
+
+
+
+运行结束后,shell命令行输出运行结果:
+Job Finished in 89.675 seconds
+Estimated value of Pi is 3.14080000000000000000
+相对于之前的10个map任务,运行结果得出的Pi更加精确
+4 编写MapReduce程序
+基于MapReduce计算模型编写分布式并行程序非常简单,程序员的主要编码工作就是实现Map和Reduce函数
+其他的并行编程的种种复杂问题,如分布式存储,工作调度,负载平衡,容错处理,网络同喜 等等,均由MapReduce框架负责处理,JobTracker TaskTracker
+4.1 MapReduce八股文
+MapReduce中,map和reduce函数遵循如下常规格式:
+map:(K1,V1)list(K2,V2)
+reduce:(K2,list(V2))list(K3,V3)
+Mapper的接口:
+protected void map(KEY	key ,VALUE value ,Context context ) throws IOException , InterruptedException{
+}
+Reduce的接口:
+protected void reduce(KEY key ,Iterable<VALUE> values,Context context) throws IOException , InterruptedException{
+}
+Context是上下文对象
+
+4.2 实现WordCount程序编写
+使用Eclipse编写MapReduce程序,打包成jar,上传到集群中,使用hadoop jar命令运行
+使用MapReduce Eclipse插件程序开发并运行Job
+Jar包
+commons-cli-1.2.jar,commons-logging-1.1.1.jar,hadoop-core.1.2.1.jar
+4.2.1 使用Eclipse编写MapReduce程序
+1. 创建mapreduce工程,在类中分出三个区域
+//Mapper区域
+//Reducer区域
+//client区域
+2. Mapper区域编写Mapper子类:
+static class MyMapper extends Mapper<LongWritable, Text, Text, IntWritable>{
+		@Override
+		protected void map(LongWritable key, Text value, Context context)
+				throws IOException, InterruptedException {
+		}
+	}
+
+3. Reducer区域编写Reducer子类:
+static class MyReducer extends Reducer<Text, IntWritable, Text, IntWritable>{
+		@Override
+		protected void reduce(Text key, Iterable<IntWritable> values,
+		Context context) throws IOException,InterruptedException {
+		}
+	}
+4.2.2 实现部分
+4. 编写代码实现Map功能
+	String lineValue = value.toString();
+	//通过\t\n\r\f进行分割
+	StringTokenizer stringTokenizer = newStringTokenizer(lineValue);
+	while(stringTokenizer.hasMoreTokens()){
+		//获取每个值
+		String wordValue = stringTokenizer.nextToken();
+		//设置map输出的key值
+		word.set(wordValue);
+		//上下文输出map的key和value
+		context.write(word, one);
+}
+5. 实现Reducer功能
+//Iterable<IntWritable>是将Map中相同key的value放到了一个集合values中.
+//用于累加
+	int sum = 0;
+	//循环遍历Iterable
+	for (IntWritable value : values) {
+			sum += value.get();
+	}
+	//设置总次数
+	result.set(sum);
+context.write(key, result);
+6. Clicent区域(main函数)
+//获取配置信息
+	Configuration conf = new Configuration();
+	//创建Job,设置配置和Job名称
+	Job job = new Job(conf,"wc");
+	//1.设置Job运行的类
+	job.setJarByClass(MyWordCount.class);
+	//2.设置Mapper和Reducer类
+	job.setMapperClass(MyMapper.class);
+	job.setReducerClass(MyReducer.class);
+	//3.设置输入文件的目录和输出文件的目录
+	FileInputFormat.addInputPath(job, new Path(args[0]));
+	FileOutputFormat.setOutputPath(job, new Path(args[1]));
+	//4.设置输出结果的key和value类型
+	job.setOutputKeyClass(Text.class);
+	job.setOutputValueClass(IntWritable.class);
+	//5.提交Job,等待运行结果,并在客户端运行信息
+	boolean isSuccess = job.waitForCompletion(true);
+	//6.结束程序
+	System.exit(isSuccess ? 0 : 1);
+4.2.3 打包成jar包
+
+
+
+4.2.4 上传jar包上传到hadoop集群中
+
+4.2.5 使用hadoop jar命令运行
+在集群中上传几个用于测试的文件
+[hadoop@hadoop-master data]$ hadoop dfs -ls /opt/wc/input
+Found 3 items
+-rw-r--r--   1 hadoop supergroup         44 2016-04-23 04:35 /opt/wc/input/01.data
+-rw-r--r--   1 hadoop supergroup         61 2016-04-23 04:35 /opt/wc/input/02.data
+-rw-r--r--   1 hadoop supergroup        105 2016-04-23 04:35 /opt/wc/input/03.data
+删除之前wc生成的output目录
+[hadoop@hadoop-master data]$ hadoop dfs -rmr /opt/wc/output
+Deleted hdfs://hadoop-master.dragon.org:9000/opt/wc/output
+开始运行wc
+[hadoop@hadoop-master data]$ hadoop jar wc.jar /opt/wc/input /opt/wc/output/
+Job Web UI监控图查看
+http://hadoop-master.dragon.org:50030/jobtracker.jsp
+
+
+点击最后一个完成的Jobs
+
+
+查看输出结果:
+http://hadoop-master.dragon.org:50070/dfshealth.jsp
+可以查看到之前上传的三个文件中所有字符串的统计如下:
+
+4.2.6 验证是否正确,使用官方的wc.jar包运行:
+[hadoop@hadoop-master hadoop-1.2.1]$ hadoop jar hadoop-examples-1.2.1.jar wordcount /opt/wc/input /opt/wc/output2/
+查看运行结果
+
+结果一样,就说明编写的程序没有问题..
+4.3 优化MyWordCount程序讲解GenericOptionsParser
+4.3.1 警告信息:
+[hadoop@hadoop-master data]$ hadoop jar wc.jar /opt/wc/input /opt/wc/output/
+16/04/23 07:43:48 WARN mapred.JobClient: Use GenericOptionsParser for parsing the arguments. Applications should implement Tool for the same.
+源码查找GrnericOptionsParser
+
+4.3.2 GenericOptionsParser,Tool,ToolRunner三者之间的联系:
+为了简化命令行方式运行作业,Hadoop自带了一些辅助类,GenericOptionsParser是一个类,用来解释常用的Hadoop命令行选项,并根据需要,为Configuration对象设置相应的取值.通常不直接使用GenericOptionsParser,更方便的方式是:实现Tool接口,通过ToolRunner来运行应用程序,ToolRunner内部调用GenericOptionsRarser:
+public interface Tool extends Configurable{
+int run(String [] args )throws Exception;
+}
+
+4.3.3 在Client中增加代码
+String[] otherArgs = new GenericOptionsParser(conf, args).getRemainingArgs();
+		if(otherArgs.length != 2){
+			System.err.println("Usage: wordcount <in> <out>");
+			System.exit(2);
+		}
+修改之后,再打包上传到集群,运行,警告信息就会消失
+
+5 安装Hadop Eclipse插件
+1. 将hadoop-eclipse-plugin-1.2.1.jar放到eclipse安装目录的plugins文件夹中,重启eclipse
+2. 打开WindowPreferences,发现Hadoop Map/Reduce选项,说明插件安装成功,配置Hadoop installation directory为本地Hadoop安装解压的目录.
+
+3. 选择windowopen perspective Other…,选择有大象图标的Map/Reduce,打开Map/Reduce的开发环境,右下角多了一个Map/Redcue Locations的框.
+
+
+4. Location Name :参数设置名称
+5. Map/Reduce Master:Hadoop集群的Map/Reduce地址,应与mapred-site.xml中的mapred.job.tracker设置相同
+Host:hadoop-master.dragon.org
+port:9001
+6. DFSMaster: Hadoop的master服务器地址,应与core-site.mxl中的fs.default.name设置相同
+Host:hadoop-master.dragon.org
+Port:9000
+
+设置完成后,点击Finish
+7. 接着点击[Advanced parameters] 从中找到[hadoop.tmp.dir],修改Hadoop集群[core-site.xml]中配置的值
+8. 配置[dfs.permissions],修改为Hadoop集群[hdfs-site.xml]中的值[false]
+9. 配置[dfs.replication],修改Hadoop集群[hdfs-site.xml]中配置的值为[1]
+
+5.1 在Win7上编译Hadoop Eclipse 插件
+注:此部分仅做参考
+1. 下载hadoop-1.2.1
+http://www.fayea.com/apache-mirror/hadoop/common/stable/hadoop-1.2.1.tar.gz
+解压目录为[%HADOOP_HOME%]
+2. 下载ANT和设置环境变量
+http://mirror.bit.edu.cn/apache//ant/binaries/apache-ant-1.9.2-bin.tar.gz
+检测ANT是否安装成功
+ant –version
+3. 下载ivy-2.1.0.jar
+放置%HADOOP_HOME%/ivy/目录下面
+
+4. 修改编译配置文件
+%HADOOP_HOME%/src/contrib/eclipse-plugin/build.xml
+<target name=”jra” depends=”compile” unless=”skip.contrib”>
+<mkdir dir=”${build.dir}/lib”/>
+<copy file=”${hadoop.root}/haoop-core-${version}.jar” tofile=”${build.dir}/lib/hadoop-core.jar” verbose=”true”/>
+<copy file=”${hadoop.root}/lib/commons-cli-1.2.jar” tofile=”${build.dir}/lib” verbose=”true”/>
+<copy file=”${hadoop.root}/lib/commons-lang-2.4.jar” tofile=”${build.dir}/lib” verbose=”true”/>
+<copy file=”${hadoop.root}/lib/commons-configuration-1.6.jar” tofile=”${build.dir}/lib” verbose=”true”/>
+<copy file=”${hadoop.root}/lib/jackson-mapper-asl-1.8.8.jar” tofile=”${build.dir}/lib” verbose=”true”/>
+<copy file=”${hadoop.root}/lib/jackson-core-asl-1.8.8.jar” tofile=”${build.dir}/lib” verbose=”true”/>
+<copy file=”${hadoop.root}/lib/commons-cli-1.2.jar” tofile=”${build.dir}/lib” verbose=”true”/>
+<copy file=”${hadoop.root}/lib/commons-httpclient-3.0.1.jar” tofile=”${build.dir}/lib” verbose=”true”/>
+
+<jar
+	jarfile=”${buile.dir}/hadoop-${name}-${version}.jar”
+	manifest=”${root}/META-INF/MANIFEST.MF”>
+	<fileset dir=”${build.dir}” includes=”class/ lib/”/>
+	<fileset dir=”${root}” includes=”resources/ plugin.xml”/>
+</jar>
+</target>
+
+5. %HADOOP_HOME%/src/contrib/build.xml
+添加如下几行:
+	<property name=”version” value=”1.2.1”/>
+<property name=”ivy.version” value=”2.1.1”/>
+<property name=”eclipse.home” location=”…”/>
+其中:eclipse.home修改为eclipse的安装目录
+
+6. 拷贝hadoop-core.jar包
+将%HADOOP_HOME%/hadoop-core-1.2.1.jar 拷贝到%HADOOP_HOME%/ivy/目录下
+7. 运行ant进行编译构建
+打开命令行,进入目录%HADOOP_HOME%/src/contrib/eclipse-plugin,输入下面命令:
+ant –Declipse.home=F:/eclipse –Dversion=1.2.1
+8. 插件
+当编译完成后在%HADOOP_HOME%/build/contrib/eclipse-plugin路径下找到编译好的插件hadoop-eclipse-plugin-1.2.1.jar
+9. 几个注意点
+一定要在网络环境下进行,如果需要设置上网代理,可以在src\contrib\build-contrib.xml中添加如下几行:
+<target name=”proxy”>
+	<property name=”proxy.host” value=””/>
+<property name=”proxy.port” value=”80”/>
+<property name=”proxy.user” value=””/>
+<property name=”proxy.pass” value=””/>
+<setproxy proxyhost=”${proxy.host}” proxyport=”${proxy.port}”
+		proxyuser=”${proxy.user}” proxypassword=”${proxy.pass}”/>
+</target>
+如果出现编译提示类的版本不匹配的问题,请确认你的java版本大于1.6
+6 使用eclipse的hadoop插件创建hadoop项目和运行
+6.1 创建项目
+newMap/Reduce Projectname:xxx
+
+由于Hadoop插件已经配置好了,所以Use defalut locationUse default Hadoopnext
+不用更改,然后完成
+将之前自己编写的WordCount类复制一份到此项目中.由于主函数需要输入两个args字符串,在shell中可以以命令方式加上路径,而在Eclipse中运行,没法使用命令行+args运行,所以需要在主函数中设置
+args = new String[] {"hdfs://hadoop-master.dragon.org:9000/opt/wc/input/",
+		"hdfs://hadoop-master.dragon.org:9000/opt/wc/output4"};
+修改完成后,可以开始运行,选择Run asRun on Hadoop
+6.2 错误调试
+6.2.1 解决java.lang.UnsupportedClassVersionError问题  
+当我们执行hadoop命令运行时 可能出异常，因为你编写代码的jdk可能和hadoop用到的JVM不匹配
+步骤：右击你的项目－－＞属性－－＞Java Compiler，设置合适的版本
+6.2.2 错误: Connection refused:no further information
+
+java.net.Connection:
+	Call to hadoop-master.dragon.org/192.168.211.3:8030 failed on connection exception: java.net.ConnectionException: Connection refused:no further information.
+解决:
+$lsmod|grep ipv6 ##查看系统是否开启
+$sudo vim /etc/modprobe.d/dist.conf ##ipv6关闭
+$sudo reboot 		##重启系统
+6.2.3 Hadoop PriviledgedActionException
+a) 修改%Hadoop_HOME%/src/core/org/apache/hadoop/fs/FileUtil.java里面checkReturnValue方法,注释掉方法内容
+为了不更改本地hadoop源码内容,在工程里添加对应位置的此类,并注释掉该方法的内容
+private static void checkReturnValue(boolean rv, File p,
+                                       FsPermission permission
+                                       ) throws IOException {
+   /* if (!rv) {
+      throw new IOException("Failed to set permissions of path: " + p +
+                            " to " +
+                            String.format("%04o", permission.toShort()));
+    }*/
+  }
+b) 编译重新打包hadoop-core-1.2.1.jar, 替换原来hadoop-1.2.1根目录jar文件
+此处选择a方法,没必要选择b方法.然后可以运行了..
+6.3 参数输入方法2
+如果不在main中加入以下代码可以这样配置:
+args = new String[] {"hdfs://hadoop-master.dragon.org:9000/opt/wc/input/",
+		"hdfs://hadoop-master.dragon.org:9000/opt/wc/output4"};
+选择Run asConfigures在Arguments中输入参数hdfs://hadoop-master.dragon.org:9000/opt/wc/input/  hdfs://hadoop-master.dragon.org:9000/opt/wc/output5
+如图:
+
+选择Apply,后,执行成功
+在Eclipse中DFS文件系统中可以产看到输出结果,如图
+
+当然通过50030 Web UI视图也可以

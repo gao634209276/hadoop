@@ -1,0 +1,475 @@
+1. 目录
+1	Hadoop MapReduce框架数据类型讲解	2
+1.1	Hadoop基本数据类型	2
+1.1.1	基本数据类型	2
+1.1.2	序列化概念	2
+1.2	Writable接口	2
+1.3	WritableCOmparable接口	3
+1.4	Java值对象的比较	4
+1.5	自定义数据类型	5
+1.5.1	使用Java原生态数据类型	5
+1.5.2	实现静态方法read(DataInput)	5
+1.6	RawComparator接口	6
+1.7	WritableComparator基类接口	7
+1.7.1	comparator的注册difine()	8
+1.7.2	comparator实例化	8
+1.8	自定义数据类型的Comparator类	9
+1.8.1	无参构造器调用父类含参构造器	9
+1.8.2	重载compare()	9
+1.8.3	注册自定义的Comparator类	9
+2	Hadoop数据类型API	10
+2.1	API查看IO包中的接口概述:	10
+2.2	Writable接口	11
+2.3	WritableComparable接口	12
+2.4	WritableCOmparator工具类	12
+2.5	IntWritable类	13
+2.6	NullWritable	14
+2.7	ObjectWritable and GenericWritable	16
+2.8	实现定制Writable类型	17
+2.8.1	分析业务需求:	17
+2.8.2	自定义数据类型(五个字段)	18
+2.8.3	分析MapReduce写法	18
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+1 Hadoop MapReduce框架数据类型讲解
+概要
+Writable
+write()是吧每个对象序列化到输入流
+readFields()是把数据流字节反序列化.
+WritableComparable
+Java值对象的比较:
+重写toString(), hashCode(), equals() 方法
+1.1 Hadoop基本数据类型
+Hadoop数据类型都实现Writable接口,以便于这些类型定义的数据可以徐泪花进行网络传输和文件存储.
+1.1.1 基本数据类型
+BooleanWritable:	标准布尔型数据		ByteWritable:		单字节数值
+DoubleWritable:	双字节数值			FloatWritable:		浮点型
+IntWritable:		整型数				LongWritable:		长整型数
+Test:				使用UTF8格式存储的文本
+NullWritable:		当<key,value>中的key或value为空时使用
+1.1.2 序列化概念
+所谓序列化(serialization),是指将结构化对象转化为字节流,以便在网络上传输或写到磁盘进行永久存储.反序列化(deserialization)是指将字节流转回结构化对象的逆过程.
+序列化在分布式数据处理的两大领域经常出现:进程间通信和永久存储.
+在Hadoop中,系统中多个节点进程间的通信是通过”远程过程调用”(remote procedure call,RPC)实现的RPC协议将消息序列化成二进制流后发送到远程节点.远程节点接着将二进制流反序列化为原始消息.
+1.2 Writable接口
+Hadoop使用自己的序列化格式Writable,它格式紧凑,速度快,但很淡用Java以外的语言进行扩展或使用.因为Writable是Hadoop的核心(大多受MapReduce程序都活为间和值使用它).
+
+1. 在Hadoop中所有的Key/Value类型必须实现Writable接口,有两个接口,分别用于读(发序列化)和写(序列化)
+
+
+1.3 WritableCOmparable接口
+2. 所有的key,必须实现Comparable接口,在MapReduce过程中需要对Key/Value对进行反复的排序,默认情况下,依据Key进行排序,要实现CompareTo()方法,所以通过了Key既要实现Writable接口又要实现Comparable接口,Hadoop中提供了一个公共的接口WritableComparable接口
+
+1.4 Java值对象的比较
+3. 由于需要序列化反序列化和基表,Hadoop数据类型对Java对象需要重写一下几个方法:
+equals();		hashCode();		toString()
+例如IntWritable部分源码所示:
+public class IntWritable implements WritableComparable {
+  public boolean equals(Object o) {
+    if (!(o instanceof IntWritable))
+      return false;
+    IntWritable other = (IntWritable)o;
+    return this.value == other.value;
+  }
+  public int hashCode() {
+    return value;
+  }
+  public String toString() {
+    return Integer.toString(value);
+  }
+
+4. Hadoop数据类型,必须有有一个默认的无参的构造方法,为了方便反射,进行创建对象.
+
+
+1.5 自定义数据类型
+1.1.3 使用Java原生态数据类型
+5. 在自定义Hadoop数据类型中,Writable类建议使用Java原生态数据类型,进行运行,最好不要使用Hadoop对Java原生类型封装好的数据类型,如下推荐使用:
+
+而不建议使用:
+
+1.1.4 实现静态方法read(DataInput)
+6.	通常情况下,实现一个静态方法read(DataInput),用于构造数据类型的实例对象,方法内部调用readFields(DataInput)方法.
+
+Implementations typically implement a static read(DataInput) method which constructs a new instance, calls readFields(DataInput) and returns the instance.
+      public static MyWritable read(DataInput in) throws IOException{
+         MyWritable w = new MyWritable();
+         w.readFields(in);
+         return w;
+      }
+1.6 RawComparator接口
+前提
+假设MapReduce从HDFS文件系统中读取数据,将结果写到HDFS文件系统中.以WordCount程序为例给大家讲解:
+第一个过程: Map Task
+从HDFS文件系统中读取文件(找到文件,分割文件split,解析文件[读取文件内容],转换成Key/value对]
+1. 调用map()方法(Mapper类的map()方法,每个Key/Value对调用一次,输出Key/Value对).
+2. 进入数据Shuffle阶段
+(1) 首先map()输出Key/Value对,放入map端的缓存区域(环形),当缓存区域达到一定大小(默认100M,spill为0.8,也就是80M)的时候,进行spill(溢出).
+(2) Spill过程: 首先进行快速的排序,然后依据Partition和Reduce Number进行分区,将数据写到硬盘上.此过程持续的进行,循环进行,直到map()输出结束.
+(3) 排序合并: 当map()输出结束,磁盘上回有很多临时磁盘文件,进行合并排序,最后形成一个文件.
+(4) 如果Job设置了Combine,在3阶段进行一次合并.
+第二个过程: Reduce Task
+(1) 拷贝map端输出结果:到对应的一系列map端的相应分区内拷贝数据,首先放在缓冲区域内,反复执行合并和排序,当缓存区域到达一定大小,将数据spill到磁盘上.
+(2) 排序合并:当reduc拷贝完数据,对所有数据(磁盘文件中的数据)进行合并和排序,使用的归并排序算法,对数据进行分组Group.
+(3) 其中reduce端的shuffle过程,非常的负责和灵活,大致讲解溢写其中过程.
+(4) 其中reduce()方法:对输入的Key/Values,进行规约化简
+(5) 将输出Key/Value写入到HDFS文件系统中.
+问题
+当数据写入磁盘时,如果要进行排序的话,(例如:Map Task的 suffle第三阶段对临时磁盘排序合并); 需要首先从磁盘读取数据,进行反序列化对象,然后在内存中对反序列化的对象进行比较.
+
+有没有对字节进行比较,不需要进行反序列化以后再比较呢?如果要实现对字节比较排序功能,Hadoop数据类型需要实现一个接口RawComparator接口.
+
+RawComparator接口
+对MapReduce来说,类型的比较是非常重要的,因为中间有个基于键的排序阶段,Hadoop提供了一个优化接口是继承自Java Comparator的RawComparator接口:
+源码:
+public interface RawComparator<T> extends Comparator<T> {
+public int compare(byte[] b1, int s1, int l1, byte[] b2, int s2, int l2);
+}
+该接口允许其实现直接比较数据流中的记录,无语先把数据流反序列化为对象,这样便避免了新建对象的额外开销.例如,我们根据IntWritable接口实现的comparator实现compare()方法,该方法可以从每个字节数据b1和b2中读取给定其实位置(s1和s2)以及长度(l1和l2)的一个整数进而直接进行比较.
+1.7 WritableComparator基类接口
+WritableComparator是对继承自WrtableComparable类的RawComparator类的一个通用实现.它提供两个主要功能:
+(一) 它提供了对原始compare()方法的一个默认实现,该方法能够反序列化将在流中进行比较的对象,并调用对象的compare()方法.
+(二) 它从当的是RawComparator实例的工厂(已注册Writable的实现).
+
+解析
+在Hadoop中有一个针对Writable数据类型,进行实现的一个通用实现类WritableComparator类.所有的数据类型,只需要继承通用类,再去需要具体功能复写相应的compare()方法.以IntWritable为例查看:
+
+IntWritable类有个内部类Comparator实现了接口WritableComparator, 并通过静态代码块向WritableComparator类中注册了IntWritable类类型的比较器.
+
+
+1.1.5 comparator的注册difine()
+其中的define方法就是注册,向WritableComparator实例对象中添加了IntWritable类类型.comparators.put(c, comparator);
+如此日常使用比较器,需要使用工厂类WritableComparator的get(IntWritable.class)方法获取一个已注册IntWritable比较器.
+如,为了获得IntWratable的comparator,我们直接如下调用:
+1.1.6 comparator实例化
+RawComparator<IntWritable> comoparator = WritableComparator.get(IntWritable.class);
+那么这个comparator可以用于比较IntWritable对象;
+IntWritable w1 = new IntWritable(163);
+IntWritable w2 = new IntWritable(67);
+asserThat(comparator.compare(w1,w2), geraterThan(0));
+或其序列化表示:
+byte[] b1 = serialize(w1);
+byte[] b2 = serialize(w2);
+asserThat(comparator.compare(b1, 0, b1.length, b2, 0, b2.length), geraterThan(0));
+1.8 自定义数据类型的Comparator类
+对应自定义Comparator需要以下几步:
+
+1.1.7 无参构造器调用父类含参构造器
+1. 推荐Comparator类定义在数据类型内部,静态内部类,实现WritableComparator类.重写默认无参构造方法,方法内必须调用父类含参构造方法如下:
+	public static class Comparator extends WritableComparator {
+
+		public Comparator() {
+			super(PairWritable.class);
+		}
+}
+
+1.1.8 重载compare()
+2. 重载父类的compare()方法,依据具体功能进行复写
+
+1.1.9 注册自定义的Comparator类
+3. 向WritableComparator类注册自定义的Comparator类
+	static {
+		WritableComparator.define(PairWritable.class, new Comparator());
+	}
+2 Hadoop数据类型API
+
+1.9 API查看IO包中的接口概述:
+PACKAGE ORG.APACHE.HADOOP.IO
+Generic i/o code for use when reading and writing data to the network, to databases, and to files.
+请参见：详细描述
+Interface Summary
+Closeable
+已过时。 use java.io.Closeable
+RawComparator<T>
+A Comparator that operates directly on byte representations of objects.
+ReadaheadPool.ReadaheadRequest
+An outstanding readahead request that has been submitted to the pool.
+SequenceFile.Sorter.RawKeyValueIterator
+The interface to iterate over raw keys/values of SequenceFiles.
+SequenceFile.ValueBytes
+The interface to 'raw' values of SequenceFiles.
+Stringifier<T>
+Stringifier interface offers two methods to convert an object to a string representation and restore the object given its string representation.
+Writable
+A serializable object which implements a simple, efficient, serialization protocol, based on DataInput and DataOutput.
+WritableComparable<T>
+A Writable which is also Comparable.
+WritableFactory
+A factory for a class of Writable.
+
+1.10 Writable接口
+org.apache.hadoop.io .Interface Writable
+All Known Subinterfaces:
+InputSplit, WritableComparable<T>
+public interface Writable
+A serializable object which implements a simple, efficient, serialization protocol, based on DataInput and DataOutput.
+Any key or value type in the Hadoop Map-Reduce framework implements this interface.
+Implementations typically implement a static read(DataInput) method which constructs a new instance, calls readFields(DataInput) and returns the instance.
+方法摘要
+ void
+readFields(DataInput in)
+          Deserialize the fields of this object from in.
+ void
+write(DataOutput out)
+          Serialize the fields of this object to out.
+
+1.11 WritableComparable接口
+org.apache.hadoop.io Interface WritableComparable<T>
+All Superinterfaces:
+Comparable<T>, Writable
+public interface WritableComparable<T>
+extends Writable, Comparable<T>
+A Writable which is also Comparable.
+WritableComparables can be compared to each other, typically via Comparators. Any type which is to be used as a key in the Hadoop Map-Reduce framework should implement this interface.
+Methods inherited from interface org.apache.hadoop.io.Writable
+readFields, write
+ 
+Methods inherited from interface java.lang.Comparable
+compareTo
+ 
+1.12 WritableCOmparator工具类
+org.apache.hadoop.io .Class WritableComparator
+java.lang.Object
+  org.apache.hadoop.io.WritableComparator
+已实现的接口：
+Comparator, RawComparator
+
+方法摘要
+ int
+compare(byte[] b1, int s1, int l1, byte[] b2, int s2, int l2)
+          Optimization hook.
+ int
+compare(Object a, Object b)
+           
+ int
+compare(WritableComparable a, WritableComparable b)
+          Compare two WritableComparables.
+static int
+compareBytes(byte[] b1, int s1, int l1, byte[] b2, int s2, int l2)
+          Lexicographic order of binary data.
+static void
+define(Class c, WritableComparator comparator)
+          Register an optimized comparator for a WritableComparable implementation.
+static WritableComparator
+get(Class<? extends WritableComparable> c)
+          Get a comparator for a WritableComparable implementation.
+ Class<? extends WritableComparable>
+getKeyClass()
+          Returns the WritableComparable implementation class.
+static int
+hashBytes(byte[] bytes, int length)
+          Compute hash for binary data.
+static int
+hashBytes(byte[] bytes, int offset, int length)
+          Compute hash for binary data.
+ WritableComparable
+newKey()
+          Construct a new WritableComparable instance.
+static double
+readDouble(byte[] bytes, int start)
+          Parse a double from a byte array.
+static float
+readFloat(byte[] bytes, int start)
+          Parse a float from a byte array.
+static int
+readInt(byte[] bytes, int start)
+          Parse an integer from a byte array.
+static long
+readLong(byte[] bytes, int start)
+          Parse a long from a byte array.
+static int
+readUnsignedShort(byte[] bytes, int start)
+          Parse an unsigned short from a byte array.
+static int
+readVInt(byte[] bytes, int start)
+          Reads a zero-compressed encoded integer from a byte array and returns it.
+static long
+readVLong(byte[] bytes, int start)
+          Reads a zero-compressed encoded long from a byte array and returns it.
+ 
+1.13 IntWritable类
+org.apache.hadoop.io Class IntWritable
+java.lang.Object
+  org.apache.hadoop.io.IntWritable
+已实现的接口：
+Comparable, Writable, WritableComparable
+
+public class IntWritable
+extends Object
+implements WritableComparable
+A WritableComparable for ints.
+Nested Class Summary
+static class
+IntWritable.Comparator
+          A Comparator optimized for IntWritable.
+ 
+构造方法摘要
+IntWritable()
+           
+
+IntWritable(int value)
+           
+
+ 
+方法摘要
+ int
+compareTo(Object o)
+          Compares two IntWritables.
+ boolean
+equals(Object o)
+          Returns true iff o is a IntWritable with the same value.
+ int
+get()
+          Return the value of this IntWritable.
+ int
+hashCode()
+           
+ void
+readFields(DataInput in)
+          Deserialize the fields of this object from in.
+ void
+set(int value)
+          Set the value of this IntWritable.
+ String
+toString()
+           
+ void
+write(DataOutput out)
+          Serialize the fields of this object to out.
+ 
+
+
+1.14 NullWritable
+NullWritable是Writable的一个特殊类型,它的序列化长度为0.它并不从数据流中读取数据,也不写入数据.它充当站位符;例如,在MapReduce中,如果你不需要使用键或值,就可以将键或值声明为NullWritable---结果是存储常量空值.如果希望存储一系列数值,与键/值对相对, NullWritable也可以用作在SequenceFile 中的键.它是一个不可变的单例类型:通过调用NullWriatble.get()方法获取这个实例.
+org.apache.hadoop.io
+Class NullWritable
+java.lang.Object
+  org.apache.hadoop.io.NullWritable
+已实现的接口：
+Comparable, Writable, WritableComparable
+
+public class NullWritable
+extends Object
+implements WritableComparable
+Singleton Writable with no data.
+
+Nested Class Summary
+static class
+NullWritable.Comparator
+          A Comparator "optimized" for NullWritable.
+ 
+方法摘要
+ int
+compareTo(Object other)
+           
+ boolean
+equals(Object other)
+           
+static NullWritable
+get()
+          Returns the single instance of this class.
+ int
+hashCode()
+           
+ void
+readFields(DataInput in)
+          Deserialize the fields of this object from in.
+ String
+toString()
+           
+ void
+write(DataOutput out)
+          Serialize the fields of this object to out.
+
+源码:
+public class NullWritable implements WritableComparable {
+  private static final NullWritable THIS = new NullWritable();
+  private NullWritable() {}                       // no public ctor
+  /** Returns the single instance of this class. */
+  public static NullWritable get() { return THIS; }
+  public String toString() {
+    return "(null)";
+  }
+
+  public int hashCode() { return 0; }
+  public int compareTo(Object other) {
+    if (!(other instanceof NullWritable)) {
+      throw new ClassCastException("can't compare " + other.getClass().getName()
+                                   + " to NullWritable");
+    }
+    return 0;
+  }
+  public boolean equals(Object other) { return other instanceof NullWritable; }
+  public void readFields(DataInput in) throws IOException {}
+  public void write(DataOutput out) throws IOException {}
+
+  /** A Comparator &quot;optimized&quot; for NullWritable. */
+  public static class Comparator extends WritableComparator {
+    public Comparator() {
+      super(NullWritable.class);
+    }
+
+    /**
+     * Compare the buffers in serialized form.
+     */
+    public int compare(byte[] b1, int s1, int l1,
+                       byte[] b2, int s2, int l2) {
+      assert 0 == l1;
+      assert 0 == l2;
+      return 0;
+    }
+  }
+
+  static {                                        // register this comparator
+    WritableComparator.define(NullWritable.class, new Comparator());
+  }
+}
+1.15 ObjectWritable and GenericWritable
+ObjectWritable是对Java基本类型(String, enum, Writable, null 或者写类型组成的数组)的一个通用封装,它在Hadoop RPC中用于对方法的参数和返回类型进行封装和解封装.
+当一个字段中包含多个类型时,ObjectWritable是非常有用的:例如,如果SequenceFile中的值包含多个类型,就可以将值类型声明为ObjectWritable,并将每个类型封装在一个ObjectWritable中.作为一个通用的机制,每次序列化都写封装类型的名称,这非常浪费空间.如果封装的类型数量比较少并且能够提前知道,那么可以通过使用静态类型的数组,并使用对序列化后的类型的引用加入位置索引提高性能.这是GenericWritable类采取的方法,并且你可以在继承的子类中指定需要支持的类型.
+API省略,可查阅权威指南
+1.16 实现定制Writable类型
+定制Writable类型:TextPair
+实现WritableComparable接口
+复写hashCode(), equals() 和toString()
+说明
+相当于针对Java语言构造的任何值对象,需要复写Java.long.Object中的hashCode(),equals()和toString()方法,HashPartitioner(ManReduce中的默认分区类)通常用hashcode()方法类选择reduce分区,所以应确保有一个比较好的hash函数来确保每个reduce分区大小相似.
+Hadoop MapReduce手机流量统计
+2.1.1 分析业务需求:
+电信实际业务产生的实际应用:
+实际业务中,原始收据,存储在文件或者关系型数据库,需要进行多次的数据清理和筛选,符合我么需要的数据,将不合格的数据全部进行过滤.
+Sqoop框架:将关系型数据和Hbase, Hive 以及HDFS中导入导出数据
+针对复杂的实际业务,往往数据,都需要自己手动的编写数据的清洗.
+
+用户是手机上网,存在流量的消耗,流量包括两个部分:
+1上行流量(发送消息),	2下行消息(接收消息).
+每种流量在网络传输过程中,有两种形式说明:
+包的大小,流量的大小
+使用手机上网,以手机号为唯一标识符,进行记录.有纪录,包括很多信息:
+
+需要的信息字段:
+
+实际需要的字段:
+手机号码(Key),	上行数据包数,	下行数据包,	上行总量,	下行总量
+2.1.2 自定义数据类型(五个字段)
+DataWritable 实现WritableComparable
+
+2.1.3 分析MapReduce写法
+哪些业务逻辑在Map阶段执行,哪些业务逻辑在Reduce阶段执行.
+Map阶段:
+从文件中获取数据,抽取需要的五个字段,输出的Key为手机号码,输出的Value为数据的流量类型DataWritable对象.
+Key		 		List<Value>
+Tel				List<DataWritable>
+Reduce阶段:
+将相同手机号码的Value中的数据流量进行相加,得出数据流量的总量(数据包和数据流量).输出到文件中,以制表符分割

@@ -1,0 +1,132 @@
+HDFS用户指南
+(HDFS Users Guide)
+
+目录
+1	目的	2
+2	概述	2
+3	前提	3
+4	Web界面	3
+5	Shell命令	3
+5.1	分布式文件系统管理命令（DFSAdmin Command）	3
+6	Secondary NameNode	4
+7	CheckPoint Node	4
+8	Backup Node	5
+9	导入Checkpoint（Import Checkpoint）	6
+10	重新权衡（Rebalancer）	6
+11	机架感知（Rack Awareness）	7
+12	安全模式（Safemode）	7
+13	文件诊断（fsck）	7
+14	升级和回滚（Upgrade and Rollback）	7
+15	文件权限和安全（File Permissions and Security）	8
+16	可扩展性（Scalability）	8
+17	相关文件（Related Documentation）	8
+
+
+1 目的
+此文档是用户使用Hadoop集群或普通单机分布式文件存储系统（HDFS）开展工作的起点，尽管HDFS被设计成适应于许多环境，有用的HDFS知识能大大帮助我们优化配置及诊断具体集群的问题。
+2 概述
+HDFS是Hadoop应用使用的主要分布式存储器，HDFS集群主要由管理文件系统元数据的NameNode（名称节点）和存储实际数据的DataNode（数据节点）组成。HDFS架构指南详细途述了HDFS。这个用户指南主要针对活动和管理的HDFS集群用户。HDFS架构图描述了NameNode、DataNode和客户端基本的相互作用。客户端通过NameNode取得文件的元数据和修改（状态或记录）然后实际执行I/O操作直接使用DataNode。
+以下列出一些可能是许多用户感兴趣的特性。
+Hadoop包括HDFS是比较合适的使用（低要求）硬件支撑的分布式存储和分布式处理系统。它允许故障、可升级并非常易于扩展。MapReduce（映射化简），众所周知的简单并适用的大型分布式应用，是Hadoop的主要部分。
+HDFS在默认配置上拥有高可配性较好的适用于多数设备。多数情况下只需要为大型集群设定配置。
+Hadoop由JAVA语言编写而成并支持所有主流平台。
+Hadoop支持“类Shell”命令与HDFS直接交互。
+NameNode和DataNode构建了Web服务为查看集群的状态提供便利。
+新的特性和更改都有规律地遵行HDFS。以下是HDFS有用特性列表：
+文件权限和安全。
+机架感知（Rack awareness）：在安排任务和分配存储空间时考虑到节点的物理位置。
+安全模式（Safemode）：运维的管理模式。
+文件诊断（FSCK）：文件系统的诊断功能，用来查找丢失的文件或块。
+重新权衡（Rebalancer）：用以平衡数据不均衡分布在DataNode时使用的工具。
+升级和回滚：软件升级后因为某些未知的问题有可能需要回滚到HDFS在升级之前的状态。
+Secondary NameNode【不推荐的】：定期生成Namespace的Checkpoint，并帮助NameNode上的包函HDFS修改日志的文件维持在指定大小以内。因为已经不推荐使用了，可用Checkpoint node替换。
+Checkpoint node：定期生成Namespace的Checkpoint，并帮助降低NameNode上的包函HDFS修改记录的日志文件的大小。填补替换先前的Secondary NameNode角色。NameNode允许多个Checkpoint节点同时存在，但必须保证系统没有注册Backup Node。
+Backup Node：Checkpoint节点的扩展。除了创建Checkpoint它同样从NameNode接收一个Edits流，并在自己的内存中维持一个Namespace的复本，它总是在同步活动的NameNode的Namespace的状态。
+3 前提
+以下文档描述了如何安装并创建一个Hadoop集群：
+单一节点安装提供给处女用户。
+集群安装提供给大型分布式集群。
+余下的文档假设用户能创建并运行至少拥有一个DataNode的HDFS。就本文档的目的，无论在NameNode还是DataNode都能运行在同一物理机器上。
+4 Web界面
+NameNode和DataNode各自运行一个内部Web服务为了显示集群的当前基本状态。使用默认配置，名称空间的首页是http://名称空间节点:50070/。它列出集群中的DataNode以及集群的基本统计数据。Web界面同样能用于通过浏览器来浏览文件系统（使用NameNode首页的“Browse the file system”链接）。
+5 Shell命令
+Hadoop包括若干类Shell命令可用于HDFS文件和其它被Hadoop支持的文件系统的交互。运行 “bin/hdfs dfs –help”显示Hadoop shell支持的各种操作（命令），此外，运行“bin/hdfs dfs –help 命令名称”显示命令的更多详细帮助。这些命令支持大部分常规文件系统操作，如复制文件，更改文件权限等等，其同样也支持一些HDFS特定操作，如更改文件的备份参数。文件系统命令行指南查看更多信息。
+5.1 分布式文件系统管理命令（DFSAdmin Command）
+“bin/hadoop dfsadmin”命令支持一些HDFS管理相关的操作。“bin/hadoop dfsadmin -help”命令列出所有当前支持的操作，例如：
+-report：报告HDFS的基本统计数据。许多信息同样存在于NameNode的首页上。
+-safemode：虽然通常不是必须的，但是管理员能手动进入或离开安全模式。
+-finalizeUpgrade：移除集群最后一次升级前的备份。
+-refreshNodes：更新允许连接到NameNode的主机集合。重新读取配置文件更新dfs.hosts和dfs.host.exclude的值，并读取这些文件中的全部主机名称。每一个没被定义在dfs.hosts但是定义在dfs.hosts.exclude的对象被退役。每一个定义在dfs.hosts并同时定义在dfs.host.exclude的被标记为退役的对象被停止。所有未出现在这两个列表中的对象都被退役。
+-printTopology：打印集群的拓扑，显示通过NameNode查看机架和DataNode的网络树结构。
+dfsadmin的具体使用方法。
+6 Secondary NameNode
+提示
+NameNode已经过时，考虑使用Checkpoint Node或Backup Node替代之。
+NameNode以日志的形式将文件系统的修改存储在本地文件系统的文件中，当NameNode启动时，它从fsimage（映像文件）中读取HDFS的状态信息，并且同时应用来源于Edits日志文件中的编辑信息，这时它将写一个新的HDFS状态到fsimage，并使用一个空的Edits文件开始正常操作。由于NameNode合并fsimage和Edits文件只在启动时进行，在业务繁忙的集群上，Edits日志文件可能随着时间的推移变得非常大，大的Edits文件的另一个副作用是造成下一次重启NameNode用时过长。
+Secondary NameNode定期地合并fsimage和Edits日志文件，并保持Edits日志文件的大小在一个上限值内，由于它的内存需求与NameNode的一致，所以它通常运行在NameNode以外的一台机器上。集群节点中的第二NameNode由 “conf/masters”文件指定，用“bin/start-dfs.sh”命令启动之。
+在Secondary NameNode上打开Checkpoint进程由2个配置参数控制。
+fs.checkpoint.period，默认设置为1小时，指定连续2次创建Checkpoint的最大时间间隔。
+fs.checkpoint.size，默认设置为64MB，当编辑日志大小到达该设置值，即使创建Checkpoint的最大时间间隔未到也强制促其执行创建Checkpoint。
+Secondary NameNode以NameNode目录结构的相同方式存储最近的Checkpoint，所以，如果有必要，其通常时刻准备好被NameNode读取Checkpoint文件的。
+Secondary NameNode的具体操作用法。
+7  CheckPoint Node
+NameNode持久保存Namespace使用2个文件：fsimage（最新的Namespace的Checkpoint）和Edits（从Checkpoint创建之后命名空间的修改记录）。当NameNode启动时，它会合并fsimage和Edits日志以提供最新的文件系统元数据视图。NameNode用新的HDFS状态覆盖fsimage并开始一个新的Edits日志。
+Checkpoint节点周期性的创建Namespace的Checkpoint。它从活动的NameNode下载fsimage和Edits日志，在本地合并，并且上传新的fsimage到活动的NameNode。Checkpoint节点通常运行在NameNode之外的不同机器上也是因为它对内存的要求与NameNode一致。Checkpoint通过“bin/hdfs namenode -checkpoint”命令在配置文件中指定的节点上启动。
+Checkpoint（或Backup）节点和其伴随的Web界面的位置都统一由dfs.backup.address和dfs.backup.http.address配置项设置。
+在Checkpoint节点上打开Checkpoint进程由2个配置参数控制。
+fs.checkpoint.period，默认设置为1小时，指定连续2次创建Checkpoint的最大时间间隔。
+fs.checkpoint.size，默认设置为64MB，当Edits日志大小到达该设置值，即使创建Checkpoint的最大时间间隔未到也强制促其执行创建Checkpoint。
+Checkpoint Node以NameNode目录结构的相同方式存储最近的Checkpoint
+Secodary NameNode以NameNode目录结构的相同方式存储最近的Checkpoint，其允许时刻准备好Checkpoint供NameNode读取。参阅导入Checkpoint（Import Checkpoint）。
+可以通过配置文件为集群设置多个Checkpoint节点。
+具体操作请查看Namenode。
+8 Backup Node
+Backup Node提供与Checkpoint节点相同的Checkpoint功能，以及维持一个内存，即时复制文件系统的Namespace，总是同步活动的NameNode的状态。除了接收文件系统NameNode上的Edits流并持久化到磁盘，Backup Node同时应用那些Edits到自己的Namespace内存复本，如此就建立了Namespace的备份。
+之所以Backup Node不需要像Checkpoint节点和Secondary NameNode那样为了创建Checkpoint而从活动的NameNode下载fsimage和Edits文件，是因为于它早已在内在中保存着最新的Namespace状态。Backup Node的Checkpoint处理效率很高是因为它只需要保存Namespace到本地fsimage并重设Edits文件。
+因为Backup Node维持一个Namespace的复本在内在，所以它的内存需求与NameNode相同。
+NameNode同时只支持1个Backup Node。如果Backup Node正在被使用就不能注册Checkpoint节点。将来将支持多个Backup Node同时存在。
+Backup Node的配置方式与Checkpoint节点一致，它的启动命令是“bin/hdfs namenode -checkpoint”。
+Backup Node（或Checkpoint Node）和其伴随的Web界面的位置都统一由dfs.backup.address和dfs.backup.http.address配置项设置。
+使用Backup Node提供的不持久化存储运行NameNode的选项，将所有持久化Namespace状态的职责委托给Backup Node，要做到这一点，启动NameNode使用“-importCheckpoint”选项，除此之外，在NameNode配置中指定不持久化存储的Edits目录配置dfs.name.edits.dir。
+要了解更多创造Backup Node和Checkpoint节点的背后动机请查阅HADOOP-4539。具体操作请查看Namenode
+9 导入Checkpoint（Import Checkpoint）
+如果所有fsimage和Edits文件的其它复本都丢失，可将最后的Checkpoint导入到NameNode，为了做到这点需要：
+创建一个由dfs.name.dir配置项指定的空的目录。
+指定Checkpoint目录的位置到配置项中的fs.checkpoint.dir。
+启动NameNode时使用“-importCheckpoint”选项。
+10 重新权衡（Rebalancer）
+HDFS数据可能不总是均衡地分布在DataNode上，一个常见的原因是在已存在（已运行）的集群上增加DataNode，在调配新数据块期间，NameNode将视参数而选择DataNode来接收这些数据块，以下是若干考虑项：
+在某个写入块的节点上保持一个该块的复本的保险做法。
+将不同的数据块复本散布在跨机架的节点上以保证万一整个机架的数据丢失也得能幸存。
+复本中的一份通常放置在数据块被写入节点的同一机架，以简少跨机架网络I/O。
+HDFS数据均衡的跨节点的散布在集群内。
+由于多种考虑项之间的竞争，数据可能不均匀地跨越放置在DataNode。HDFS给管理员提供了一个工具来分析数据的安置情况，并重新平衡数据跨越所有节点。简单的重新权衡管理员指南以PDF文件的形式在附件HADOOP-1652。
+具体操作请查看Balancer。
+11 机架感知（Rack Awareness）
+通常大型Hadoop集群都将各节点安排在机架和网络（局域网络）中，在同一机架比在同一跨机架网络更可取。另外，NameNode试着将数据块的复本放置在多个机架以优化容错机制。Hadoop让集群管理员通过“dfs.network.script”配置项来决定某一节点属于某一机架。当配置了脚本（“dfs.network.script”），每一个节点都会运行这个脚本以确定自己的机架ID。默认配置假设所有节点都处于同一机架。这个特性和配置的进一步描述在附件的PDF文件HADOOP-692。
+12 安全模式（Safemode）
+在NameNode从fsimage和Edits日志中加载文件系统状态的启动时间内，它会等待DataNode报告它们的数据块，以使其不会过早的开始复制已经在集群中存在足够多复本的数据块。在这期间，NameNode处于安全模式。NameNode的安全模式本质上是HDFS集群的只读模式，它不允许任何修改文件系统或数据块。通常NameNode在DataNode上报它们大部分数据块为可用后会自动解除安全模式。如果有必要，能通过“bin/hadoop dfsadmin -savemode”命令将HDFS转入安全模式。NameNode首页有显示是否安全模式。更多详细的描述和配置由setSafeMode()的JAVA文档提供。
+13 文件诊断（fsck）
+HDFS支持fsck命令来检查各种冲突，它设计用来通过若干文件报告问题，例如，丢失数据块或复本不足。不像传统本地文件系统的fsck功能，这个命令不会纠正它发现的错误。NameNode通常能自动纠正大部份可纠正的错误。默认情况下fsck忽略打开文件但在报告期间提供一个选项来选择文件。HDFS的fsck命令不是Hadoop的shell命令，可以通过“bin/hadoop fsck”运行。更多命令用法请参考fsck。fsck能运行在整个文件系统或文件子集上。
+14 升级和回滚（Upgrade and Rollback）
+当一个已存在（已运行）的Hadoop升级时，正如任何软件的升级，它也许存在新的故障或不兼容的更新影响现有应用，并且没有被早点发现。任何不正常的HDFS安装都不会因为某一选项而丢失任何数据，更不用说从新重启HDFS。HDFS允许管理员回到Hadoop的先前版本并回滚集群的状态到升级之前。HDFS升级的更多详细描述在Hadoop Upgrade维基页面。HDFS能拥有一次一个这样的备份。在升级之前，管理员需要使用“bin/hadoop dfsadmin -finalizeUpgrade”命令删除已经存在的备份。下面简单描述典型的升级过程：
+升级Hadoop软件之前，确定是否有一个现有的最终备份，“dfsadmin –upgradeProgress status”能告诉你是否需要备份。
+停止集群并分部新版本的Hadoop。
+使用“-upgrade”选项（“bin/start-dfs.sh –upgrade”）启动新版本。
+大部分时间，集群工作良好，一旦你认为新的HDFS运作良好（可能操作后的几天），完成升级。请注意，直到升级前删除的文件确实释放了DataNode的空间，这时集群升级结束。
+如果有需要回退到升级前版本的需求。
+停止集群并分发早期版本的Hadoop。
+使用回滚指令启动集群（“bin/start-dfs.h -rollback”）。
+15 文件权限和安全（File Permissions and Security）
+文件的权限都设计成与其它常用平台类似，像Linux。当前，安全性仅限于简单权限。谁启动的NameNode，谁就被当成HDFS的超级用户。以后的版本将能支持网络认证协议，像Kerberos用户认证和加密数据传输。详细论述在权限指南。
+16 可扩展性（Scalability）
+Hadoop当前运行在上千台节点规模的集群上。技术支持的维基页面列出了许多部署大型Hadoop集群的组织。每一个HDFS集群都包括一个NameNode。目前，NameNode上的可用内存是其可扩展性的主要限制。在非常大的集群，增加HDFS中文件的平均大小有助于在不增加NameNode内存的情况下增加集群的大小（也就是说尽量将大文件存储于HDFS中，这样就可以增长集群的数据大小而不增加文件量，能节省NameNode的内存）。默认配置可能不太适合大集群。常见问题维基页面列出了针对大集群配置改进的建议。
+17 相关文件（Related Documentation）
+这个用户指南是从事HDFS工作的很好的起点。随着用户指南的继续改进，有大量丰富的关于Hadoop和HDFS的文档。下面的文档是进一步深入探索的起点：
+Hadoop 站点：Apache Hadoop站点的主页。
+Hadoop 维基：Hadoop维基的主页（首页），不像发行的文档，它是Hadoop源码树的一部分，Hadoop维基由Hadoop社区定期编辑。
+FAQ：常见问题维基页面。
+Hadoop的Java API文档。
+Hadoop用户邮件列表：core-user[at]hadoop.apache.org。
+仔细阅读src/hdfs/hdfs-default.xml。其中包函大部分可用配置项的简短描述。
+Hadoop 命令指南：Hadoop命令用法。

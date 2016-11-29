@@ -1,0 +1,200 @@
+相比于Hadoop1.0，Hadoop 2.0中的HDFS增加了两个重大特性，HA和Federaion。HA即为High Availability，用于解决NameNode单点故障问题，该特性通过热备的方式为主NameNode提供一个备用者，一旦主NameNode出现故障，可以迅速切换至备NameNode，从而实现不间断对外提供服务。Federation即为“联邦”，该特性允许一个HDFS集群中存在多个NameNode同时对外提供服务，这些NameNode分管一部分目录（水平切分），彼此之间相互隔离，但共享底层的DataNode存储资源。
+在一个典型的HDFSHA场景中，通常由两个NameNode组成，一个处于active状态，另一个处于standby状态。Active NameNode对外提供服务，比如处理来自客户端的RPC请求，而Standby NameNode则不对外提供服务，仅同步active namenode的状态，以便能够在它失败时快速进行切换。
+为了能够实时同步Active和Standby两个NameNode的元数据信息（实际上editlog），需提供一个共享存储系统，可以是NFS、QJM（Quorum Journal Manager）或者Bookeeper，Active Namenode将数据写入共享存储系统，而Standby监听该系统，一旦发现有新数据写入，则读取这些数据，并加载到自己内存中，以保证自己内存状态与Active NameNode保持基本一致，如此这般，在紧急情况下standby便可快速切为active namenode
+
+
+HDFS2.0主备NameNode
+有多种配置方式,这里使用JournalNode方式.需要至少3个节点作为JournalNode,这三个节点可与其他服务,比如NodeManager共用节点.
+主备两个NameNode应位于不同机器上,这两个机器不要在部署其他服务,即他们分别独享一台机器.(HDFS2.0中无需在部署和配置Secondary Namenode,备NameNode已经代替它完成相应的功能).
+主备NameNode之间有两种切换方式:手动切换和自动切换,其中,自动切换是借助Zookeeper实现的,因此,需要部署一个Zookeeper集群(通常为奇数个节点,至少3个),本课程使用手动切换方式.
+
+部署结构图
+JournalNode1,2,3-->[Active NAmeNode -->Standby NameNode]-->DataNode1,2,3,4...
+可以分配如下:(便于理解)
+hadoop  namenode1(ActiveNN)
+hadoop1 nanenode2(StandbyNN)
+hadoop2 datanode1(JournalNode,DataNode)
+slave1  datanode2(JournalNode,DataNode)
+slave2  datanode3(JournalNode,DataNode)
+资源有限可以合并一些节点(如下合并)
+hadoop1 nn1(Active NN,JournalNode,DataNode)
+hadoop2 nn2(Standby NN,JournalNode,DataNode)
+hadoop  dn(JournalNode,DataNode)
+
+HDFS部署流程-hdsf-site.xml配置
+dfs.nameservices-->ha
+提供服务的NS逻辑名称,与core-site.xml里的对应(集群命名服务列表自定义)
+dfs.ha.namenodes.${NS_ID}-->nn1,nn2
+列出该逻辑名称下的NameNode逻辑名称(命名服务中namenode逻辑名称,自定义)
+dfs.namenode.rpc-address.${NS_ID}.${NN_ID}示例:ha.nn1/ha.nn2-->hadoop1:9000/hadoop2:9000
+命名服务中逻辑名称对应的RPC地址port可自己规定如9000,8020,9001
+dfs.namenode.http-address.${NS_ID}.${NN_ID}示例:ha.nn1/ha.nn2-->hadoop1:50070/hadoop2:50070
+命名服务中逻辑名称对应的HTTP地址port默认50070
+
+dfs.namenode.name.dir-->file:///.../name
+NameNode fsimage本地存放目录
+dfs.namenode.shared.edits.dir-->qjournal://hadoop:8485;hadoop1:8485;hadoop2:8485/ha
+主备NameNode同步源信息的共享存储系统;组成结构为[URL][所有journalnode的ip+port用;隔开][这些jpurnalnode组成的服务命名]
+dfs.journalnode.edits.dir-->/.../journal
+JournalNode数据存放目录
+dfs.datanode.data.dir-->file:///.../data
+datanode本地数据存放位置
+dfs.ha.automatic-failover.enabled-->false
+是否支持主备自动切换,ture时候,需要配置zookeeper,false为手动
+
+
+core-site.xml
+fs.defaultFs-->hdfs://hadoop1:8020或者hdfs://ha:8020
+主namenode的地址,手动的话需要配置物理地址,使用了zookeeper的话使用逻辑地址
+slaves文件
+hadoop,hadoop1,hadoop2三个datanode和journalnode的物理地址/域名..
+
+HA部署流程-启动/关闭HDFS
+1,在journalNode节点上,输入一下命令启动journalnode服务
+sbin/hadoop-daemon.sh start journalnode
+2,在nn1上,对其进行格式化,并启动
+bin/hdfs namenode -format
+sbin/hadoop-damemode.sh start namenode
+3,在nn2上,同步nn1的元数据信息
+bin/hdfs namenode -bootstrapStanby
+4,在nn2上,启动namenode
+sbin/hadoop-daemon.sh start namenode
+经过以上四个不收操作,nn1和nn2均处理standby状态
+5,在nn1上,将namenode切换为Active
+bin/hdfs haadmin -transitionToActive nn1
+6,在nn1上,启动所有datanode
+sbin/hadoop-daemons.sh start datenode
+7,关闭hadoop集群
+在nn1上,输入一下命令
+sbin/stop-dfs.sh
+
+WEB UI
+Active-->hadoop1:50070/
+Standby-->hadoop2:50070/
+
+
+HDFS HA+Federation部署架构
+JournalNode1,2,3-->[ActiveNameNode+StandbyNameNode]1+[ActiveNameNode+StandbyNameNode]2-->datanode1,2,3,4...
+便于理解
+hadoop1 namenode1(ActiveNN)
+hadoop2 nanenode2(StandbyNN)
+hadoop3 namenode1(ActiveNN)
+hadoop4 nanenode2(StandbyNN)
+slave1  datanode1(JournalNode,DataNode)
+slave2  datanode2(JournalNode,DataNode)
+slave3  datanode3(JournalNode,DataNode)
+合并节点(保证journalnode节点为奇数)
+hadoop1 nn1(ActiveNN)
+hadoop2 nn1(Active NN,JournalNode,DataNode)
+hadoop3 nn2(Standby NN,JournalNode,DataNode)
+hadoop4 nn3(Standby NN,JournalNode,DataNode)
+配置演示
+dfs.nameservices-->ha1,ha2
+dfs.ha.namenodes.ha1-->nn1,nn2
+dfs.ha.namenodes.ha1-->nn3,nn4
+dfs.namenode.rpc-address.ha1.nn1-->hadoop1:8020
+dfs.namenode.rpc-address.ha1.nn2-->hadoop2:8020
+dfs.namenode.rpc-address.ha2.nn3-->hadoop3:8020
+dfs.namenode.rpc-address.ha2.nn4-->hadoop4:8020
+dfs.namenode.http-address.ha1.nn1-->hadoop1:50070
+dfs.namenode.http-address.ha1.nn2-->hadoop2:50070
+dfs.namenode.http-address.ha2.nn3-->hadoop3:50070
+dfs.namenode.http-address.ha2.nn4-->hadoop4:50070
+dfs.namenode.name.dir-->file:///home/hadoop/hafed/haoop2.7.2/data/dfs/name
+ha1中的nn1,nn2和ha2中的nn3,nn4可以共用journalnode,但dfs.namenode.shared.edits.dir配置不能相同
+ha1和ha2中journalnode在相应的节点上分别配置如下
+dfs.namenode.shared.edits.dir-->qjournal://hadoop2:8485;hadoop3:8485;hadoop4:8485/ha1
+dfs.namenode.shared.edits.dir-->qjournal://hadoop2:8485;hadoop3:8485;hadoop4:8485/ha2
+其他相同
+dfs.journalnode.edits.dir-->home/hadoop/hafed/haoop2.7.2/data/dfs/journal
+dfs.datanode.data.dir-->file:///home/hadoop/hafed/haoop2.7.2/data/dfs/data
+dfs.ha.automatic-failover.enabled-->false
+core-site.xml
+fs.defaultFs-->hdfs://hadoop1:8020
+slaves
+hadoop2,hadoop3,hadoop4
+
+HA部署流程-启动/关闭HDFS
+1,在各个journalNode节点上,输入一下命令启动journalnode服务
+sbin/hadoop-daemon.sh start journalnode
+2,在nn1上,对其进行格式化,并启动
+bin/hdfs namenode -format -clusterId ha1(自己命名与配置无关,但是要确保每个namenode节点的clusterId都为这个名称)
+sbin/hadoop-daemon.sh start namenode
+3,在nn2上,同步nn1的元数据信息
+bin/hdfs namenode -bootstrapStandby
+4,在nn2上,启动namenode
+sbin/hadoop-daemon.sh start namenode
+经过以上四个步骤操作,nn1和nn2均处理standby状态
+5,在nn1上,将namenode切换为Active,这里与单独ha对比,多一个-ns,这个ns是配置中设置的namespace,配置的nn1在ha1下,所以指定ha1
+bin/hdfs haadmin -ns ha1 -transitionToActive nn1
+6,nn3,nn4启动同上流程,注意这里在上面第5步的-ns指定的则是ha2
+7,在nn1上,启动所有datanode
+sbin/hadoop-daemons.sh start datenode
+8,关闭hadoop集群
+在nn1上,输入一下命令
+sbin/stop-dfs.sh
+WEB UI
+Active-->hadoop1:50070/
+Standby-->hadoop2:50070/
+Active-->hadoop3:50070/
+Standby-->hadoop4:50070/
+
+
+YARN部署架构图
+Resource Manager-->NodeManager1,2,3,4..
+节点分配
+haodop1 ResourceManager
+hadoop2 NodeManager,MR JobHistory Server
+hadoop3 NodeManager
+hadoop4 NodeManager
+配置yarn-site.xml
+yarn.resourcemanager.hostname-->hadoop1
+yarn.resourcemanager.address-->${yarn.resorcemanager.hostname}:8032
+yarn.resorucemanager.scheduler.address-->${yarn.resorcemanager.hostname}:8030
+yarn.resourcemanager.webapp.address-->${yarn.resorcemanager.hostname}:8088
+yarn.resourcemanager.webapp.https.address-->${yarn.resorcemanager.hostname}:8090
+yarn.resourcemanager.resource-tracker.address-->${yarn.resorcemanager.hostname}:8031
+yarn.resourcemanager.admin.address-->${yarn.resorcemanager.hostname}:8033
+#过滤器
+yarn.resourcemanager.scheduler.class-->org.apache.hadoop.yarn.server.resourcemanager.scheduler.fair.FairScheduler
+#scheduler的本地配置文件
+yarn.scheduler.fair.allocation.file-->${yarn.home.dir}/etc/hadoop/fairscheduler.xml
+#yarn本地目录,可以配置多个
+yarn.nodemanager.local-dirs-->/home/hadoop/ha/hadoop2.7.2/yarn/local
+#yarn日志配置
+yarn.log-aggregation-enable-->true
+yarn.nodemanager.remote-app-log-dir-->/tmp/logs
+#16g内存配置给yarn内存30720Mb
+yarn.nodemanager.resource.memory-mb-->30720
+#分配给yarn 12核cpu
+yarn.nodemanager.resource.cpu-vcores-->12
+#使用mapreduce的shuffle
+yarn.nodemanager.aux-services-->mapreduce_shuffle
+fairscheduler.xml配置
+这里将集群划分为若干个队列queue,分别分配一部分资源Resources,包括内存,cpu,运行最多的app数目,权重weight,设定acl提交用户权限,例如第一个名称为infrastructure的queue中的资源,只能有root,yarn,search,hdfs四个用户可以使用,默认情况任何用户都可以使用
+<xml version="1.2"?>
+<allocations>
+	<queue name="infrastructure">
+		<minResources>102300 mb, 50 vcores </minResources>
+		<maxResources>153600 mb, 100 vcores </maxResources>
+		<maxRunningApps>200</maxRunningApps>
+		<minSharePreemptionTimeout>300</minSharePreemptionTimeout>
+		<weight>1.0</weight>
+		<aclSubmitApps>root,yarn,search,hdfs</aclSubmitApps>
+	</queue>
+	<queue name="tool">
+		<minResources>102300 mb, 30 vcores </minResources>
+		<maxResources>153600 mb, 50 vcores </maxResources>
+	</queue>
+	<queue name="sentiment">
+		<minResources>102300 mb, 30 vcores </minResources>
+		<maxResources>153600 mb, 50 vcores </maxResources>
+	</queue>
+</allocations>
+mapred-site.xml配置
+mapreduce.framework.name-->yarn
+mapreduce.jobhistory.address-->hadoop:10020
+mpareduce.jobhistory.webapp.address-->hadoop:19888
+yarn启动停止
+在ResourceManager节点也就是hadoop下,启动和停止,历史作业监控启动在jobhistory.address节点也就是hadoop上启动
+

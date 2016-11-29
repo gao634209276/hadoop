@@ -1,0 +1,50 @@
+YARN/MRv2是下一代MapReduce框架（见Hadoop-0.23.0），该框架完全不同于当前的MapReduce框架，它在扩展性，容错性和通用性等方面更出色，据统计，Yarn有超过150000行代码，完全是重写编写的。本文介绍了YARN/MRv2中基本术语的含义，帮助有兴趣的程序员们对YARN有一个初步的理解。
+（1） YARN
+下一代MapReduce框架的名称，为了容易记忆，一般称为MRv2（MapReduce version 2）。该框架已经不再是一个传统的MapReduce框架，甚至与MapReduce无关，她是一个通用的运行时框架，用户可以编写自己的计算框架，在该运行环境中运行。用于自己编写的框架作为客户端的一个lib，在运用提交作业时打包即可。该框架为提供了以下几个组件：
+<1> 资源管理：包括应用程序管理和机器资源管理
+<2> 资源双层调度
+<3> 容错性：各个组件均有考虑容错性
+<4> 扩展性：可扩展到上万个节点
+当前比较有名的计算框架有：
+MapReduce：google提出的计算框架，在互联网大规模数据处理方面使用广泛，但它存在缺点，如：不支持DAG作业，迭代式作业等。
+Apache Giraph：图算法处理框架，采用BSP模型（bulk-synchronous parallel model），可用于计算pagerank，shared connections, personalization-based popularity等迭代类算法。
+Apache HAMA：基于BSP模型的分布式计算框架，可用于大规模科学计算，如矩阵，图算法，网络算法等，受Google’s Pregel启发，但又有所不同，HAMA是个更加通用的框架，不仅仅支持图算法。
+Open MPI：这是一个高性能计算函数库，通常在HPC（High Performance Computing）中采用，与MapReduce相比，其性能更高，用户可控性更强，但编程复杂，容错性差，可以说，各有所长，在实际应用中，针对不同该应用会采用MPI或者MapReduce。
+HBase ：Hadoop Database，是一个高可靠性、高性能、面向列、可伸缩的分布式存储系统，仿照Google Bigtable实现的，近几年逐步的流行，慢慢取代Cassandra了（在Hadoop In China2011上，FaceBook工程师说他们早就放弃Cassandra而改用HBase）。
+以上这几个框架各有所长，在一些互联网公司中均会采用，如果分别部署安装这些计算框架过于繁琐，有了YARN后，这些计算框架可统一在YARN环境中部署。目前仅有MapReduce可使用，其他几个在陆续开发中
+
+（2） ResourceManager
+简称“RM”。
+MRv2最基本的设计思想是将JobTracker的两个主要功能，即资源管理和作业调度/监控分成两个独立的进程。在该解决方案中包含两个组件：全局的ResourceManager（RM）和与每个应用相关的ApplicationMaster（AM）。这里的“应用”指一个单独的MapReduce作业或者DAG作业。RM和与NodeManager（NM，每个节点一个）共同组成整个数据计算框架。RM是系统中将资源分配给各个应用的最终决策者。AM实际上是一个具体的框架库，它的任务是【与RM协商获取应用所需资源】和【与NM合作，以完成执行和监控task的任务】。
+RM有两个组件组成：
+调度器（Scheduler）
+应用管理器（ApplicationsManager，ASM）
+调度器根据容量，队列等限制条件（如每个队列分配一定的资源，最多执行一定数量的作业等），将系统中的资源分配给各个正在运行的应用。这里的调度器是一个“纯调度器”，因为它不再负责监控或者跟踪应用的执行状态等，此外，他也不负责重新启动因应用执行失败或者硬件故障而产生的失败任务。调度器仅根据各个应用的资源需求进行调度，这是通过抽象概念“资源容器”完成的，资源容器（Resource Container）将内存，CPU，磁盘，网络等资源封装在一起，从而限定每个任务使用的资源量。
+调度器内嵌有策略可插拔的插件，主要负责将集群中得资源分配给多个队列和应用。当前MapReduce的调度器，如Capacity Scheduler和Fair Scheduler，均可作为该插件。
+
+（3）NodeManager
+简称“NM”。
+NM是每个节点上的框架代理，主要负责启动应用所需的容器，监控资源（内存，CPU，磁盘，网络等）的使用情况并将之汇报给调度器。
+一句话：“NM主要用于管理某个节点上的task和资源”。
+（4）ApplicationsManager
+简称“ASM”。
+ASM主要负责接收作业，协商获取第一个容器用于执行AM和提供重启失败AM container的服务。
+一句话：“ASM主要用于管理AM”。
+（5）ApplicationMaster
+简称“AM”。
+AM主要负责同调度器协商以获取合适的容器，并跟踪这些容器的状态和监控其进度。
+一句话：“AM主要用于管理其对应的应用程序，如MapReduce作业，DAG作业等”。
+（6） Container
+容器中封装了机器资源，如内存，CPU, 磁盘，网络等，每个任务会被分配一个容器，该任务只能在该容器中执行，并使用该容器封装的资源。
+怎样将某个计算框架（MapReduce，HAMA，Giraph）部署到YARN中？
+答：需要编写一个ApplicaionMaster。
+【参考资料】
+（1）雅虎声称对Apache Hadoop的贡献巨大：http://oss.org.cn/?action-viewnews-itemid-62734
+（2）The Next Generation of Apache Hadoop MapReduce：http://developer.yahoo.com/blogs/hadoop/posts/2011/02/mapreduce-nextgen/
+（3）Next Generation of Apache Hadoop MapReduce – The Scheduler：http://developer.yahoo.com/blogs/hadoop/posts/2011/03/mapreduce-nextgen-scheduler/
+（4）Apache Hadoop NextGen MapReduce (YARN)：http://hadoop.apache.org/common/docs/r0.23.0/hadoop-yarn/hadoop-yarn-site/YARN.html
+原创文章，转载请注明： 转载自董的博客
+本文链接地址: http://dongxicheng.org/mapreduce-nextgen/basic-concepts/
+作者：Dong，作者介绍：http://dongxicheng.org/about/
+本博客的文章集合:http://dongxicheng.org/recommend/
+Hadoop, MRv2, nextgen-mapreduce, yarn, 下一代MapReduce

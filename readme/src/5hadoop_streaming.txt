@@ -1,0 +1,105 @@
+Hadoop Streaming提供了一个便于进行MapReduce编程的工具包，使用它可以基于一些可执行命令、脚本语言或其他编程语言来实现Mapper和 Reducer，从而充分利用Hadoop并行计算框架的优势和能力，来处理大数据。需要注意的是，Streaming方式是基于Unix系统的标准输入输出来进行MapReduce Job的运行
+
+
+Streaming优点
+  1 开发效率高，便于移植
+
+只要按照标准输入输出格式进行编程，就可以满足hadoop要求。因此单机程序稍加改动就可以在集群上进行使用。 同样便于测试
+只要按照 cat input | mapper | sort | reducer > output 进行单机测试即可。
+如果单机测试通过，大多数情况是可以在集群上成功运行的，只要控制好内存就好了。
+
+    2 提高程序效率
+有些程序对内存要求较高，如果用java控制内存毕竟不如C/C++。
+
+
+
+参数说明
+input <path>：指定作业输入，path可以是文件或者目录，可以使用*通配符，-input选项可以使用多次指定多个文件或目录作为输入。
+
+-output <path>：指定作业输出目录，path必须不存在，而且执行作业的用户必须有创建该目录的权限，-output只能使用一次。
+
+-mapper：指定mapper可执行程序或Java类，必须指定且唯一。
+
+-reducer：指定reducer可执行程序或Java类，必须指定且唯一。
+
+-file, -cacheFile, -cacheArchive：分别用于向计算节点分发本地文件、HDFS文件和HDFS压缩文件。
+
+-numReduceTasks：指定reducer的个数，如果设置-numReduceTasks 0或者-reducer NONE则没有reducer程序，mapper的输出直接作为整个作业的输出。
+
+-------------------------------------------------------------
+例子1：排序
+[hadoop@h91 hadoop-0.20.2-cdh3u5]$ bin/hadoop fs -cat aa.txt
+a123
+aa,123
+bb,456
+cc,321
+dd,654
+
+
+[hadoop@h91 hadoop-0.20.2-cdh3u5]$ bin/hadoop jar $HADOOP_HOME/contrib/streaming/hadoop-streaming-0.20.2-cdh3u5.jar -input /user/hadoop/aa.txt -output output1 -mapper 'cut -f 2 -d ,' -reducer 'uniq'
+***（-mapper 'cut -f 2 -d ,' 截取第列 逗号分隔 ）（-reducer 'uniq' 取唯一排序）***
+   
+结果：
+[hadoop@h91 hadoop-0.20.2-cdh3u5]$ bin/hadoop fs -cat /user/hadoop/output1/part-00000
+123
+321
+456
+654
+
+
+---------------------
+例子2：统计行数
+[hadoop@h91 hadoop-0.20.2-cdh3u5]$ bin/hadoop jar $HADOOP_HOME/contrib/streaming/hadoop-streaming-0.20.2-cdh3u5.jar -input /user/hadoop/aa.txt -output output2 -mapper 'cat' -reducer 'wc -l'
+***（wc -l 统计行数）
+
+-c	显示文件的Bytes数(字节数)及文件名输出到屏幕上
+-l	将每个文件的行数及文件名输出到屏幕上
+-m	将每个文件的字符数及文件名输出到屏幕上，如果当前系统不支持多字节字符其将显示与-c参数相同的结果
+-w	将每个文件含有多少个词及文件名输出到屏幕上
+******
+结果：
+[hadoop@h91 hadoop-0.20.2-cdh3u5]$ bin/hadoop fs -cat /user/hadoop/output2/part-00000
+4
+
+-----------------------
+例子3：
+
+[hadoop@h91 hadoop-0.20.2-cdh3u5]$ vi mapper.sh 
+#!/bin/sh
+cat
+
+[hadoop@h91 hadoop-0.20.2-cdh3u5]$ vi reducer.sh 
+#!/bin/bash
+sort -t ',' -k 2
+
+##（sort -t ',' -k 2   逗号分隔 取第2列）
+
+[hadoop@h91 hadoop-0.20.2-cdh3u5]$ bin/hadoop jar $HADOOP_HOME/contrib/streaming/hadoop-streaming-0.20.2-cdh3u5.jar -input /user/hadoop/aa.txt -output output3 -mapper mapper.sh -reducer reducer.sh -file mapper.sh -file reducer.sh -jobconf mapred.reduce.tasks=2
+
+结果：
+[hadoop@h91 hadoop-0.20.2-cdh3u5]$ bin/hadoop fs -ls /user/hadoop/output3
+[hadoop@h91 hadoop-0.20.2-cdh3u5]$ bin/hadoop fs -cat /user/hadoop/output3/part-00000
+bb,456
+dd,654
+
+[hadoop@h91 hadoop-0.20.2-cdh3u5]$ bin/hadoop fs -cat /user/hadoop/output3/part-00001
+aa,123
+cc,321
+
+
+--------------------------------
+streaming 类使用
+  -D stream.reduce.output.field.separator=, /  
+  -D stream.num.reduce.output.key.fields=4 /  
+  -D map.output.key.field.separator=, /  
+  -D num.key.fields.for.partition=2 /  
+  -partitioner org.apache.hadoop.mapred.lib.KeyFieldBasedPartitioner /  
+  -input /app/test/test.txt  /  
+  -output /app/test/test_result /   
+  -mapper ./mapper.sh  /  
+  -reducer ./reducer.sh /  
+  -file mapper.sh /  
+  -file reducer.sh /  
+  -jobconf mapre.job.name="sep_test"  
+
+通过这种方式，就做到前4个字段是key，但是通过前两个字段进行partition的目的

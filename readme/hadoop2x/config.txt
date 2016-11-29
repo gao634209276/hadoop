@@ -1,0 +1,342 @@
+cankao
+http://yeelor.iteye.com/blog/2002623
+http://www.aboutyun.com/thread-7746-1-1.html
+本文只介绍集群环境安装配置,其中的功能使用不做过多说明.详情参考其他资料
+集群没有配置HA,详情参考其他资料
+版本搭配问题:
+hadoop使用的是目前比较新的稳定版本
+hive
+27 June 2015 : release 1.2.1 available
+This release works with Hadoop 1.x.y, 2.x.y
+当然还有2.0.0版本,当时也没直接选了1.2.1后来也不想改动了hive的其他说明
+hive与java,hadoop选择
+Java 1.7
+Note:  Hive versions 1.2 onward require Java 1.7 or newer. Hive versions 0.14 to 1.1 work with Java 1.6 as well. Users are strongly advised to start moving to Java 1.8 (see HIVE-8607).
+Hadoop 2.x (preferred), 1.x (not supported by Hive 2.0.0 onward).
+Hive versions up to 0.13 also supported Hadoop 0.20.x, 0.23.x.
+hive的元数据和mysql选择
+https://cwiki.apache.org/confluence/display/Hive/AdminManual+MetastoreAdmin
+Database	Minimum Supported Version	Name for Parameter Values
+MS SQL	Server	2008 R2	mssql
+MySQL	5.6.17	mysql
+Oracle	11g	oracle
+Postgres	9.1.13	postgres
+hive数据存储整合hbase选择
+https://cwiki.apache.org/confluence/display/Hive/HBaseIntegration
+Hive 1.x will remain compatible with HBase 0.98.x and lower versions. Hive 2.x will be compatible with HBase 1.x and higher.
+hbase
+The 1.1.x series is the current stable release line, it supercedes 1.0.x, 0.98.x and 0.94.x (the 1.0.x, 0.98.x and 0.94.x lines are still seeing a monthly cadence of bug fix releases for those who are not easily able to update). Note that 0.96 was EOL'd September 1st, 2014.
+这里说明1.1.x是稳定版本,但为何要使用hbase1.2.1看官方说明
+http://hbase.apache.org/book.html#java找到第四项Basic Prerequisites查看hbase和java,以及hadoop支持,文中表示hadoop2.7.x不支持hbase1.1.x需要使用hbase1.2.x才可以,所以选用hbase1.2.1
+zookeeper
+zookeeper的兼容性最好,所以选了当时的稳定版3.4.8
+pig
+6 June, 2015: release 0.15.0 available
+This release works with Hadoop 0.23.X, 1.X and 2.X
+sqoop
+由于使用的是hadoop2.x就只能使用对应的sqoop-1.4.6.bin__hadoop-2.0.4-alpha.tar.gz
+综上所述,开始搭建集群
+版本,路径和环境变量的设置
+
+/usr/local/maven/maven-3.3.9
+/usr/local/ant/apache-ant-1.9.7
+/usr/local/java/jdk1.7.0_80
+/usr/local/mysql(5.6 or later)
+/etc/profile
+export MAVEN_HOME=/usr/local/maven/maven-3.3.9
+export ANT_HOME=/usr/local/ant/apache-ant-1.9.7
+export JAVA_HOME=/usr/local/java/jdk1.7.0_80
+export PATH=$PATH:$JAVA_HOME/bin:$ANT_HOME/bin:/usr/local/mysql/bin:$MAVEN_HOME/bin
+export CLASSPATH=.:$JAVA_HOME/lib/dt.jar:$JAVA_HOME/jre/lib:$JAVA_HOME/lib/toos.jar:$ANT_HOME/lib/ant-launcher.jar:$ANT_HOME/lib/*.jar
+
+/opt/modules/hadoop-2.7.2
+/opt/modules/hive-1.2.1
+/opt/modules/hbase-1.2.1
+/opt/modules/zookeeper-3.4.8
+/opt/modules/sqoop-1.4.6
+~/.bashrc或者~/.bash_profile
+export HADOOP_HOME=/opt/modules/hadoop-2.7.2
+export HIVE_HOME=/opt/modules/hive-1.2.1
+export SQOOP_HOME=/opt/modules/sqoop-1.4.6
+export HBASE_HOME=/opt/modules/hbase-1.2.1
+export ZOOKEEPER_HOME=/opt/modules/zookeeper-3.4.8
+export PIG_HOME=/opt/modules/pig-0.15.0
+export PATH=$PATH:$HADOOP_HOME/bin:$HADOOP_HOME/sbin:$HIVE_HOME/bin:$ZOOKEEPER_HOME/bin:$HBASE_HOME/bin:$SQOOP_HOME/bin:$PIG_HOME/bin
+export CLASSPATH=$CLASSPATH:$PIG_HOME/pig-0.15.0-core-h2.jar
+基本工作
+集群节点hostname为hadoop,hadoop1,hadoop2,虚拟机桥接设置
+设置静态ip	vi /etc/sysconfig/network-scripts/ifcfg-eth0
+更改hostname:
+echo hadoop>/etc/sysconfig/network
+ip绑定host
+vim /etc/hosts
+192.168.2.3	hadoop
+192.168.2.10	hadoop1
+192.168.2.11	hadoop2
+关闭防火墙
+service iptables status
+service iptables stop
+vim /ect/sysconfig/selinux
+SELINUX=disabled
+ssh传输协议
+ssh-keygen -t rsa
+ssh-copy-id -i /home/hadoop/.ssh/id_rsa.pub ${hostname}
+
+haodoop配置
+
+/opt/modules/hadoop-2.7.2/etc/hadoop/hadoop-env.sh
+export HADOOP_PREFIX=/opt/modules/hadoop-2.7.2
+export JAVA_HOME=/usr/local/java/jdk1.7.0_80
+/opt/modules/hadoop-2.7.2/etc/hadoop/core-site.xml
+<configuration>
+	<property>
+		<name>fs.defaultFS</name>
+		<value>hdfs://hadoop:9000</value>
+	</property>
+	<property>
+		<name>hadoop.tmp.dir</name>
+		<value>/opt/modules/hadoop-2.7.2/data/tmp</value>
+	</property>
+	<property>
+		<name>io.file.buffer.size</name>
+		<value>131072</value>
+	</property>
+	<property>
+		<name>hadoop.proxyuser.hadoop.hosts</name>
+		<value>*</value>
+	</property>
+	<property>
+		<name>hadoop.proxyuser.hadoop.groups</name>
+		<value>*</value>
+	</property>
+</configuration>
+
+/opt/modules/hadoop-2.7.2/etc/hadoop/hdfs-site.xml
+<configuration>
+	<property>
+		<name>dfs.namenode.secondary.http-address</name>
+		<value>hadoop:50090</value>
+	</property>
+	<property>
+		<name>dfs.replication</name>
+		<value>1</value>
+	</property>
+	<property>
+		<name>dfs.permissions.enabled</name>
+		<value>false</value>
+	</property>
+	<property>
+		<name>dfs.blocksize</name>
+		<value>33554432</value>
+	</property>
+
+	<property>
+		<name>dfs.namenode.name.dir</name>
+		<value>file:/opt/modules/hadoop-2.7.2/data/dfs/name</value>
+	</property>
+	<property>
+		<name>dfs.datanode.data.dir</name>
+		<value>file:/opt/modules/hadoop-2.7.2/data/dfs/data</value>
+	</property>
+	<property>
+		<name>dfs.webhdfs.enabled</name>
+		<value>true</value>
+	</property>
+</configuration>
+/opt/modules/hadoop-2.7.2/etc/hadoop/slaves
+hadoop1
+hadoop2
+/opt/modules/hadoop-2.7.2/etc/hadoop/yarn-site.xml
+<configuration>
+
+	<property>
+		<name>yarn.nodemanager.aux-services</name>
+		<value>mapreduce_shuffle</value>
+	</property>
+	<property>
+		<name>yarn.nodemanager.aux-services.mapreduce.shuffle.class</name>
+		<value>org.apache.hadoop.mapred.ShuffleHandler</value>
+	</property>
+	<property>
+		<name>yarn.resourcemanager.address</name>
+		<value>hadoop:8032</value>
+		</property>
+	<property>
+		<name>yarn.resourcemanager.scheduler.address</name>
+		<value>hadoop:8030</value>
+	</property>
+	<property>
+		<name>yarn.resourcemanager.resource-tracker.address</name>
+		<value>hadoop:8031</value>
+	</property>
+	<property>
+		<name>yarn.resourcemanager.admin.address</name>
+		<value>hadoop:8033</value>
+	</property>
+	<property>
+		<name>yarn.resourcemanager.webapp.address</name>
+		<value>hadoop:8088</value>
+	</property>
+
+	<property>
+		<name>yarn.resourcemanager.hostname</name>
+		<value>hadoop</value>
+	</property>
+	<property>
+		<name>yarn.log-aggregation-enable</name>
+		<value>true</value>
+	</property>
+	<property>
+		<name>yarn.log-aggregation.retain-seconds</name>
+		<value>604800</value>
+	</property>
+</configuration>
+
+/opt/modules/hadoop-2.7.2/data/dfs/name
+/opt/modules/hadoop-2.7.2/data/dfs/data
+/opt/modules/hadoop-2.7.2/data/tmp/dfs/namesecondary
+
+hive
+/opt/modules/hive-1.2.1/conf/hive-env.sh
+export JAVA_HOME=/usr/local/java/jdk1.7.0_80
+export HADOOP_HOME=/opt/modules/hadoop-2.7.2
+export HIVE_CONF_DIR=/opt/modules/hive-1.2.1/conf
+
+/opt/modules/hive-1.2.1/conf/hive-site.xml
+<configuration>
+	<property>
+		<name>hive.metastore.warehouse.dir</name>
+		<value>/user/hive/warehouse</value>
+	</property>
+	<property>
+		<name>javax.jdo.option.ConnectionURL</name>
+		<value>jdbc:mysql://192.168.2.3:3306/hive</value>
+	</property>
+	<property>
+		<name>javax.jdo.option.ConnectionDriverName</name>
+		<value>com.mysql.jdbc.Driver</value>
+	</property>
+	<property>
+		<name>javax.jdo.option.ConnectionUserName</name>
+		<value>root</value>
+	</property>
+	<property>
+		<name>javax.jdo.option.ConnectionPassword</name>
+		<value>root</value>
+	</property>
+
+	<property>
+		<name>hive.hwi.listen.host</name>
+		<value>0.0.0.0</value>
+	</property>
+	<property>
+		<name>hive.hwi.listen.port</name>
+		<value>9999</value>
+	</property>
+	<property>
+		<name>hive.hwi.war.file</name>
+		<value>lib/hive-hwi-1.2.1.war</value>
+	</property>
+
+	<property>
+		<name>hive.querylog.location</name>
+		<value>/opt/modules/hive/logs</value>
+	</property>
+	<property>
+		<name>hive.aux.jars.path</name>
+		<value>file:///opt/modules/hive-1.2.1/lib/hive-hbase-handler-1.2.1.jar,file:///opt/modules/hive-1.2.1/lib/guava-14.0.1.jar,file:///opt/modules/hive-1.2.1/lib/hbase-common-1.2.1.jar,file:///opt/modules/hive-1.2.1/lib/zookeeper-3.4.8.jar</value>
+	</property>
+	<property>
+		<name>hbase.zookeeper.quorum</name>
+		<value>hadoop:2181,hadoop1:2182,hadoop2:2183</value>
+	</property>
+</configuration>
+首先说明,第一个段配置是设置mysql存储元数据,首先要安装mysql5.6或更高版本,并设置账号登陆权限和操作权限
+第二段设置是配置hive-hwi,这里需要编译hive-hwi.war
+第三段配置是设置hive整合hbase,这里需要重新编译hbase-hadler-1.2.1.jar,并且配置好hbase和zookeeper,并copy相应必要的jar包,详情看我另一篇文章
+zookeeper
+/opt/modules/zookeeper-3.4.8/conf/zoo.cfg
+server.1=192.168.2.3:2888:3888
+server.2=192.168.2.10:2888:3888
+server.3=192.168.2.11:2888:3888
+/opt/modules/zookeeper-3.4.8/data/myid
+1
+hbase
+/opt/modules/hbase-1.2.1/conf/hbase-env.sh
+export HBASE_MANAGES_ZK=false
+export JAVA_HOME=/usr/local/java/jdk1.7.0_80
+export HBASE_CLASSPATH=/opt/modules/hadoop-2.7.1/etc/hadoop
+
+/opt/modules/hbase-1.2.1/conf/hbase-site.sh
+<configuration>
+  <property>
+    <name>hbase.rootdir</name>
+    <value>hdfs://hadoop:9000/user/hbase</value>
+  </property>
+  <property>
+    <name>hbase.cluster.distributed</name>
+    <value>true</value>
+  </property>
+  <property>
+    <name>hbase.zookeeper.property.clientPort</name>
+    <value>2181</value>
+  </property>
+  <property>
+    <name>hbase.zookeeper.quorum</name>
+    <value>hadoop,hadoop1,hadoop2</value>
+  </property>
+  <property>
+    <name>hbase.zookeeper.property.dataDir</name>
+    <value>/opt/modules/hbase-1.2.1/data</value>
+  </property>
+  <property>
+    <name>hbase.zookeeper.session.timeout</name>
+    <value>90000</value>
+  </property>
+  <property>
+    <name>hbase.tmp.dir</name>
+    <value>/opt/modules/hbase-1.2.1/data/tmp</value>
+  </property>
+</configuration
+/opt/modules/hbase-1.2.1/conf/regionservers
+hadoop1
+hadoop2
+
+sqoop
+/opt/modules/sqoop-1.4.6/conf/sqoop-env.sh
+export HADOOP_COMMON_HOME=/opt/modules/hadoop-2.7.2
+export HADOOP_MAPRED_HOME=/opt/modules/hadoop-2.7.2
+export HBASE_HOME=/opt/modules/hbase-1.2.1
+export HIVE_HOME=/opt/modules/hive-1.2.1
+export ZOOCFGDIR=/opt/modules/zookeeper-3.4.8/conf
+
+/opt/modules/sqoop-1.4.6/bin/configure-sqoop注释一下内容
+## Moved to be a runtime check in sqoop.
+# if [ ! -d "${HCAT_HOME}" ]; then
+#   echo "Warning: $HCAT_HOME does not exist! HCatalog jobs will fail."
+#   echo 'Please set $HCAT_HOME to the root of your HCatalog installation.'
+# fi
+
+# if [ ! -d "${ACCUMULO_HOME}" ]; then
+#   echo "Warning: $ACCUMULO_HOME does not exist! Accumulo imports will fail."
+#　  echo 'Please set $ACCUMULO_HOME to the root of your Accumulo installation.'
+#　fi
+
+# Add HCatalog to dependency list
+# if [ -e "${HCAT_HOME}/bin/hcat" ]; then
+#   TMP_SQOOP_CLASSPATH=${SQOOP_CLASSPATH}:`${HCAT_HOME}/bin/hcat -classpath`
+#   if [ -z "${HIVE_CONF_DIR}" ]; then
+#     TMP_SQOOP_CLASSPATH=${TMP_SQOOP_CLASSPATH}:${HIVE_CONF_DIR}
+#   fi
+#   SQOOP_CLASSPATH=${TMP_SQOOP_CLASSPATH}
+# fi
+
+# Add Accumulo to dependency list
+# if [ -e "$ACCUMULO_HOME/bin/accumulo" ]; then
+#   for jn in `$ACCUMULO_HOME/bin/accumulo classpath | grep file:.*accumulo.*jar | cut -d':' -f2`; do
+#     SQOOP_CLASSPATH=$SQOOP_CLASSPATH:$jn
+#   done
+#   for jn in `$ACCUMULO_HOME/bin/accumulo classpath | grep file:.*zookeeper.*jar | cut -d':' -f2`; do
+#     SQOOP_CLASSPATH=$SQOOP_CLASSPATH:$jn
+#   done
+# fi

@@ -1,0 +1,136 @@
+hadoop:
+hdfs:分布式文件系统,海量数据
+	NameNode:名称节点,org.apache.hadoop.hdfs.server.namenode.NameNode
+	DataNode:数据节点,org.apache.hadoop.hdfs.server.datanode.DataNode
+	SecondaryNameNode:辅助名称节点, org.apache.hadoop.hdfs.server.namenode.SecondaryNameNode
+
+Yarn:mapreduce执行框架-->在集群上调度执行作业
+	ResourceManager:资源管理器org.apache.hadoop.yarn.server.resourcemanager.ResourceManager
+	NodeManager:节点管理器org.apache.hadoop.yarn.server.nodemanager.NodeManager
+
+	mapreduce:map + reduce
+	Mapper:map
+	Reducer:reduce
+
+Hadoop MapReduce原理
+job提交
+	submit()方法内部创建submitter并调用-->submitJobInternal()
+	submit过程如下:
+		请求rm获取appid,用做mrjob id
+		检查output的有效性
+		计算inputsplit
+		复制资源(jar,conf,input split)到hdfs上,存放在以jobid命名的目录下
+Job在RM上的初始化
+	1.rm收到app,转给yarn调度器
+	2.scheduler分配container
+	3.在countainer上启动app master,交给nm管理
+	4.app master创建多个记录跟踪进度,接受task的进度报告和完成报告
+	5.检索input split
+	6.split-->map task,为每个split创建map任务和一定数量的reduce任务(setNumReduce()),此时分配jobid如下:
+	Client Job-->RM-->NM-->AM-->RM-->AM(job task为小任务时候)-->本节点的RM上运行Task,(uber:jvm重新利用)
+	uber task就是指这一点,因为开启新容器分配和运行程序更耗费资源.
+	小job的衡量标准是map<10,只有reduce=1,而且input size < block size,这些值可以修改
+	mapreduce.job.ubertask.maxmaps
+	mapreduce.job.ubertask.maxreduces
+	mapreduce.job.ubertask.enable
+	7.最后App Master调用OutputCommitter的setupJob()方法,默认是FileOutputCommimter,主要是穿件output目录和临时工作目录
+
+
+start-all.sh
+	start-dfs.sh-->hadoop namenode ,hadoop datanode,hadoop secondaryNamenode
+	start-yarn.sh-->yarn.sh(RM,AM)
+远程调试手段:
+Client Job Debug(ide:eclipse)-->Server ResourceManager(JVM)
+1.远程jvm启动时候,增加远程调试启动参数:(三种方法)
+	a.运行java程序时,直接指定参数
+	java -xxxx "-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=8000"
+	b.先设置环境变量,在启动jvm,直接将变量附加在jvm启动参数之后
+	export xxx="-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=8000"
+	java yyy $xxx
+	c.${hadoop_home}\bin\yarn
+	YARN_RESOURCEMANAGER_OPTS="-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=8000"
+2.编写脚本
+	touch enable_yarn_remotedebug.sh
+	export YARN_RESOURCEMANAGER_OPTS=
+	"-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=8000"
+	chmod 755 enable_yarn_remotedebug.sh
+3.执行脚本./enable_yarn_remotedebug.sh
+4.source
+5.start-yarn.sh
+6.启动多个nm,但是rm暂停在监听8000的过程中.如下:
+hadoop@hadoop:hadoop-2.7.2$ echo $YARN_RESOURCEMANAGER_OPTS
+-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=8000
+hadoop@hadoop:hadoop-2.7.2$ sbin/start-yarn.sh
+starting yarn daemons
+starting resourcemanager, logging to /opt/single/hadoop-2.7.2/logs/yarn-hadoop-resourcemanager-hadoop.out
+Listening for transport dt_socket at address: 8000
+
+7.到客户端中设置断点,连接到远程rm程序,进行远程调试
+	a.在客户端的eclipse中找到RM类ResourceManager
+	b.找到main函数,这是断点,当然可以在之后其他地方
+	c.在main上右键,选择调试,-->debug-->debug configuration-->
+	remote java application-->Connect:standart(Socket Attach)-->Host:haoop,Port:8000
+
+Map-Reduce详细过程
+源码:hadoop:
+yarn
+----------------------------
+	1.调度框架,基于事件evenQueue
+
+Job
+--------------------
+	1.在yarn中为Applications
+	2.基于状态机模型
+		NEW	NEW_SAVING SUBMITTED ACCEPTED RUNNING FINISHED FAILED KILLED
+	3.状态之间的变换Transition通过事件触发的
+
+
+hadoop中非常核心的类,AsyncDispatcher:
+--------------------------
+AsyncDispatcher:
+Thread:run(){while{event = eventQueue.take();}}
+	-->BlockingQueue<Event> eventQueue
+	--> dispatch(event);
+		-->EventHandler handler = eventDispatchers.get(type);-->Map<Class<? extends Enum>, EventHandler> eventDispatchers;
+		-->handler.handle(event);
+eventQueue对应的put方法在GenericEventHandler的handle方法中:
+GenericEventHandler
+	handle(Event)-->eventQueue.put(event);
+
+AsyncDispatcher
+	异步事件分发器,底层的总管道,存放一下两个容器:
+	事件:所有的事件存放在eventQueue : BlockingQueue<Event> (事件队列)中
+	事件处理器:不同的事件要有不同的事件处理器eventDispatchers : Map<Class<? extends Enum>, EventHandler>处理
+	所有的事件通过线程并发:eventHandlingThread : Thread
+	对应的createThread()中内部类new Runnable() 线程类: run()方法中有一个while循环寻找eventQueue,然后将对应的event交给其中dispatch(event)分发器方法,此方法获得 EventHandler handler = eventDispatchers.get(type);然后调用相应的handle方法
+	相应的handle方法在:内部类GenericEventHandler中,它通过eventQueue.put(event)方法,将事件put到eventQueue队列中去
+	在ResourceManager类中有很多相应的handler实现类,其中内部类:ApplicationAttemptEventDispatcher,尝试事件调度分发,同GenericEventHandler一样实现了EventHandler接口,实现了handle(RMAppAttemptEvent)方法,其调用了rmAppAttempt.handle(event)方法,rmAppAttempt通过handle方法中new的RRMApp rmApp接口类对象获取,它只有一个实现类RMAppImpl和实现了EventHandler接口,RMAppImpl类中也有个handle(RMAppEvent)方法
+	这里的rmAppAttempt.handle(event)方法是二次调用,二次调度是由于每个app都是不同的类型,rmAppAttempt.handle(event)是无状态的,针对所有的event,而RMAppImpl类中的handle(RMAppEvent)是有状态的,针对特定的一个event,在ResourceManager中内部类ApplicationAttemptEventDispatcher的handler方法中可以看出rmApp通过id来区分相应的具体类型.
+综上所述:事件分发分两次完成
+例如:
+
+RMAppAttempt(真正的事件处理实体)-->ApplicationAttemptEventDispatcher(该事件分发器)-->handle(RMAppAttemptEvent event(处理的事件))-->RMAppAttemptEvent extends AbstractEvent<RMAppAttemptEventType>(事件的类型)-->enum RMAppAttemptEventType
+
+RMAppImpl-->ApplicationEventDispatcher--> handle(RMAppEvent event)--> RMAppEvent extends AbstractEvent<RMAppEventType>--> enum RMAppEventType()
+RMNodeImpl-->NodeEventDispatcher-->handle(RMNodeEvent event)-->enum RMNodeEventType
+RMContainer-->RMContainerPreemptEventDispatcher-->ContainerPreemptEvent-->enum ContainerPreemptEventType
+exit()-->RMFatalEventDispatcher-->handle(RMFatalEvent event)-->enum RMFatalEventType
+ResourceScheduler-->SchedulerEventDispatcher-->SchedulerEvent-->enum SchedulerEventType
+
+通过远程调试ResourceManager启动的事件:
+	1.设置ResourceManager的JVM开启远程调试模式;由于开发期间经常调试,讲环境变量设置到一个启动脚本中
+	启动:enable_yarn_remotedebug.sh,
+	关闭disable_yarn.remotedebug.sh
+	export YARN_RESOURCEMANAGER_OPTS=
+	如此./disable_yarn_remoteDebug.sh就是将环境变量注销掉
+	2.执行脚本启动
+	3.在eclipse中调试,在main函数中断点,链接到resourcemanager的8000端口,
+	4.右键调试debug as-->denbug configuration-->remote debug-->ResourceManager-->...同上示范
+	5.BreakPoint断点位置:
+	AsyncDispatcher$GenericEventHandler [line: 235] - handle(Event)
+	AsyncDispatcher [line: 173] - dispatch(Event)
+	一个是调用put,一个是take,对eventQueue进行不断的循环操作.通过心跳机制
+
+RMApp调试:
+
+等等

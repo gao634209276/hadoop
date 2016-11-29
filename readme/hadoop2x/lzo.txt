@@ -1,0 +1,66 @@
+build/mvn -Pyarn -Phadoop-2.6 -Dhadoop.version=2.7.2 -Phive -Phive-thriftserver -DskipTests  package
+mvn -Pyarn -Phadoop-2.6 -Dhadoop.version=2.7.2  -Phive -Phive-thriftserver -DskipTests clean package
+./make-distribution.sh --name custom-spark --tgz -Psparkr -Pyarn -Phadoop-2.6 -Dhadoop.version=2.7.2 -Phive -Phive-thriftserver
+lzo配置
+http://www.th7.cn/Program/java/201606/869656.shtml
+1.下载官网http://www.oberhumer.com/opensource/lzo/#download
+tar -zxvf /opt/software/lzo-2.09.tar.gz -C /opt/src/
+cd /opt/src/lzo-2.09/
+sudo mkdir /usr/local/lzo
+export CFLAGS=-m64
+export CXXFLAGS=-m64
+./configure --enable-shared --prefix /usr/local/lzo
+make && sudo make install
+2.下载打包hadoop-lzo
+https://github.com/twitter/hadoop-lzo/zipball/master
+unzip hadoop-lzo-master.zip
+export CFLAGS=-m64
+export CXXFLAGS=-m64
+export LIBRARY_PATH=/usr/local/lzo/lib
+C_INCLUDE_PATH=/usr/local/lzo/include \
+LIBRARY_PATH=/usr/local/lzo/lib \
+mvn clean package -Dmaven.test.skip=true
+cd target/native/Linux-amd64-64
+tar -cBf - -C lib . | tar -xBvf - -C ~
+mv ~/libgplcompression* $HADOOP_HOME/lib/native/
+hadoop-env.sh设置
+export LD_LIBRARY_PATH=/usr/local/lzo/lib
+env设置无效
+mvn clean package后生成hadoop-lzo-0.4.20-SNAPSHOT.jar
+cp hadoop-lzo-0.4.20-SNAPSHOT.jar $HADOOP_HOME/share/hadoop/common/
+mapreduce中间压缩:
+在core-size中设置
+	<property>
+		<name>io.compression.codecs</name>			<value>org.apache.hadoop.io.compress.GzipCodec,org.apache.hadoop.io.compress.DefaultCodec,com.hadoop.compression.lzo.LzoCodec,com.hadoop.compression.lzo.LzopCodec,org.apache.hadoop.io.compress.BZip2Codec</value>
+	</property>
+	<property>
+		<name>io.compression.codec.lzo.class</name>
+		<value>com.hadoop.compression.lzo.LzoCodec</value>
+	</property>
+在mapred.size中设置
+	<property>
+		<name>mapred.compress.map.output</name>
+		<value>true</value>
+	</property>
+	<property>
+		<name>mapred.map.output.compression.codec</name>
+		<value>com.hadoop.compression.lzo.LzoCodec</value>
+	</property>
+使用:
+hadoop中给Lzo文件建立Index
+hadoop jar $HADOOP_HOME/share/common/hadoop-lzo-0.4.20-SNAPSHOT.jar com.hadoop.compression.lzo.LzoIndexer /test/input
+hadoop中对mr任务直接使用LzoCodec压缩
+在inputformat中使用LzoTextInputFormat,可对lzo压缩格式的数据进行mr优化job
+
+
+============================================================
+wget http://www.oberhumer.com/opensource/lzo/
+tar -zxvf lzo-2.09.tar.gz -C /opt/tool/
+cd /opt/tool/lzo-2.09/
+mkdir /usr/local/lzo-2.09
+./configure --enable-shared --prefix /usr/local/lzo-2.09
+
+C_INCLUDE_PATH=/usr/local/lzo-2.09/include \
+LIBRARY_PATH=/usr/local/lzo-2.09/lib \
+mvn clean test
+

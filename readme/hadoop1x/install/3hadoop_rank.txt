@@ -1,0 +1,167 @@
+1 Hadoop机架感知的实现及配置
+HDFS无力网络环境
+
+博客分类：
+hadoop
+hadoop机架感知分布式 
+hadoop机架感知实现及配置
+
+背景
+分布式的集群通常包含非常多的机器，由于受到机架槽位和交换机网口的限制，通常大型的分布式集群都会跨好几个机架，由多个机架上的机器共同组成一 个分布 式集群。机架内的机器之间的网络速度通常都会高于跨机架机器之间的网络速度，并且机架之间机器的网络通信通常受到上层交换机间网络带宽的限制。
+具体到hadoop集群，由于hadoop的HDFS对数据文件的分布式存放是按照分块block存储，每个block会有多个副本(默认为3)，并且为了数据的安全和高效，所以hadoop默认对3个副本的存放策略为：
+
+在本地机器的hdfs目录下存储一个block
+在另外一个rack的某个datanode上存储一个block
+在该机器的同一个rack下的某台机器上存储最后一个block
+这样的策略可以保证对该block所属文件的访问能够优先在本rack下找到，如果整个rack发生了异常，也可以在另外的rack上找到该block的副本。这样足够的高效，并且同时做到了数据的容错。
+但是，hadoop对机架的感知并非是自适应的，亦即，hadoop集群分辨某台slave机器是属于哪个rack并非是只能的感知的，而是需要 hadoop的管理者人为的告知hadoop哪台机器属于哪个rack，这样在hadoop的namenode启动初始化时，会将这些机器与rack的对 应信息保存在内存中，用来作为对接下来所有的HDFS的写块操作分配datanode列表时（比如3个block对应三台datanode）的选择 datanode策略，做到hadoop allocate block的策略：尽量将三个副本分布到不同的rack。
+接下来的问题就是：通过什么方式能够告知hadoop namenode哪些slaves机器属于哪个rack？以下是配置步骤。
+
+配置
+默认情况下，hadoop的机架感知是没有被启用的。所以，在通常情况下，hadoop集群的HDFS在选机器的时候，是随机选择的，也就是说， 很有可 能在写数据时，hadoop将第一块数据block1写到了rack1上，然后随机的选择下将block2写入到了rack2下，此时两个rack之间产 生了数据传输的流量，再接下来，在随机的情况下，又将block3重新又写回了rack1，此时，两个rack之间又产生了一次数据流量。在job处理的 数据量非常的大，或者往hadoop推送的数据量非常大的时候，这种情况会造成rack之间的网络流量成倍的上升，成为性能的瓶颈，进而影响作业的性能以 至于整个集群的服务。
+要将hadoop机架感知的功能启用，配置非常简单，在namenode所在机器的hadoop-site.xml配置文件中配置一个选项：
+
+<property>
+<name>topology.script.file.name</name>
+<value>/path/to/script</value>
+</property>
+
+这个配置选项的value指定为一个可执行程序，通常为一个脚本，该脚本接受一个参数，输出一个值。接受的参数通常为某台datanode机器的 ip地 址，而输出的值通常为该ip地址对应的datanode所在的rack，例如”/rack1”。Namenode启动时，会判断该配置选项是否为空，如果 非空，则表示已经用机架感知的配置，此时namenode会根据配置寻找该脚本，并在接收到每一个datanode的heartbeat时，将该 datanode的ip地址作为参数传给该脚本运行，并将得到的输出作为该datanode所属的机架，保存到内存的一个map中。
+至于脚本的编写，就需要将真实的网络拓朴和机架信息了解清楚后，通过该脚本能够将机器的ip地址正确的映射到相应的机架上去。一个简单的实现如下：
+
+#!/usr/bin/perl -w
+
+use strict;
+my $ip = $ARGV[0];
+my $rack_num = 3;
+my @ip_items = split /\./, $ip;
+my $ip_count = 0;
+
+foreach my $i (@ip_items) {
+$ip_count += $i;
+}
+my $rack = "/rack".($ip_count % $rack_num);
+print "$rack";
+
+
+功能测试
+以下是分别就配置了机架感知信息和没有配置机架感知信息的hadoop HDFS启动instance进行的数据上传时的测试结果。
+
+写入数据
+当没有配置机架信息时，所有的机器hadoop都默认在同一个默认的机架下，名为 “/default-rack”，这种情况下，任何一台datanode机器，不管物理上是否属于同一个机架，都会被认为是在同一个机架下，此时，就很容 易出现之前提到的增添机架间网络负载的情况。例如，对没有机架信息的hadoop HDFS启动instance上传一个文件，其block信息如下：
+从上图可以看出，在没有机架信息的情况下，namenode默认将所有的slaves机器全部默认为在/default-rack下，根据hadoop代码的分析也能知道哦啊，此时在写block时，三个datanode机器的选择完全是随机的。
+
+而当配置了机架感知信息以后，hadoop在选择三个datanode时，就会进行相应的判断：
+1.    如果上传本机不是一个datanode，而是一个客户端，那么就从所有slave机器中随机选择一台datanode作为第一个块的写入机器(datanode1)。
+a)    而此时如果上传机器本身就是一个datanode（例如mapreduce作业中task通过DFSClient向hdfs写入数据的时候），那么就将该datanode本身作为第一个块写入机器(datanode1)。
+2.    随后在datanode1所属的机架以外的另外的机架上，随机的选择一台，作为第二个block的写入datanode机器(datanode2)。
+3.    在写第三个block前，先判断是否前两个datanode是否是在同一个机架上，如果是在同一个机架，那么就尝试在另外一个机架上选择第三个 datanode作为写入机器(datanode3)。而如果datanode1和datanode2没有在同一个机架上，则在datanode2所在的 机架上选择一台datanode作为datanode3。
+4.    得到3个datanode的列表以后，从namenode返回该列表到DFSClient之前，会在namenode端首先根据该写入客户端跟 datanode列表中每个datanode之间的“距离”由近到远进行一个排序。如果此时DFS写入端不是datanode，则选择datanode列 表中的第一个排在第一位。客户端根据这个顺序有近到远的进行数据块的写入。在此，判断两个datanode之间“距离”的算法就比较关键，hadoop目 前实现如下，以两个表示datanode的对象DatanodeInfo(node1,node2)为例:
+a)    首先根据node1和node2对象分别得出两个datanode在整个hdfs集群中所处的层次。这里的层次概念需要解释一下：每个datanode在hdfs集群中所处的层次结构字符串是这样描述的，假设hdfs的拓扑结构如下：
+
+如上图所示，每个datanode都会对应自己在集群中的位置和层次，如node1的位置信息为“/rack1/datanode1”,那么它所处的层次就为2，其余类推。
+b)    得到两个node的层次后，会沿着每个node所处的拓朴树中的位置向上查找，如“/rack1/datanode1”的上一级就是“/rack1”， 此时两个节点之间的距离加1，两个node分别同上向上查找，直到找到共同的祖先节点位置，此时所得的距离数就用来代表两个节点之间的距离。所以，如上图 所示，node1和node2之间的距离就为4.
+5.    当根据“距离”排好序的datanode节点列表返回给DFSClient以后，DFSClient便会创建Block OutputStream，并想这次block写入pipeline中的第一个节点（最近的节点）开始写入block数据。
+6.    写完第一个block以后，依次按照datanode列表中的次远的node进行写入，直到最后一个block写入成功，DFSClient返回成功，该block写入操作结束。
+通过以上策略，namenode在选择数据块的写入datanode列表时，就充分考虑到了将block副本分散在不同机架下，并同时尽量的避免了之前描述的网络多于开销。
+对配置了机架信息的hadoop HDFS启动instance上传一个文件，其block信息如下：
+从上图可以看出，在配置了机架信息的情况下，为了减少机架间的网络流量，namenode会将其中两个副本写在同一个机架上，并且为了尽量做到容错，会将第三个block写道另一个机架上的datanode上。
+
+读取数据
+    当对某个文件的某个block进行读取的时候，hadoop采取的策略也是一样：
+1.    首先得到这个block所在的datanode的列表，有几个副本数该列表就有几个datanode。
+2.    根据列表中datanode距离读取端的距离进行从小到大的排序：
+a)    首先查找本地是否存在该block的副本，如果存在，则将本地datanode作为第一个读取该block的datanode
+b)    然后查找本地的同一个rack下是否有保存了该block副本的datanode
+c)    最后如果都没有找到，或者读取数据的node本身不是datanode节点，则返回datanode列表的一个随机顺序。
+程序逻辑
+对写副本时的选择datanoe选择逻辑代码如下：
+
+对于hadoop写数据block副本的策略代码如下：
+
+
+读取block时对block所在的datanode进行由近到远的排序程序逻辑如下：
+
+
+问题
+Hadoop通过机架信息对hdfs读写的操作选择和决策逻辑就如上文提到。这里可以看出，hadoop在设计之初提到的对通过机架信息来减少网 络开销 的概念和想法，在如今的代码中都有不错的实现，只是我们现在使用hadoop集群的时候，还从来没有将机架的信息告知namenode，导致目前 namenode就认为所有的datanode机器都在一个机架上，选择块读写的时候没有根据任何机架的信息来对选块写块进行优化。
+另外，由于所有datanode的机架信息都是通过namenode启动的时候通过每个datanode的ip地址传到用来解析rack信息的程 序来得 到该ip对应的datanode所在的rack，所以，一旦某台机器在物理上从它所在地rack下架，并放置到另外的机架上，但是ip并没有发生改变，重 新启动datanode时，就会被namenode仍然认为在之前的rack上，这样其实是不对的。所以每次机器换机架时，需要根据namenode上用 来根据ip解析rack的程序逻辑，来修改该机器的ip，让其被解析到正确的机架上去。由于对新加入集群的datanode的机架判断是通过在 namenode中的registerDatanode来判断，所以，只要该新加入的datanode的ip对应其rack正确，此时的namenode 不需要重启，也能正确解析该datanode所在机架。
+性能测试
+测试环境：
+
+Namenode一台
+Datanode 9台
+dfs.block.size=32kB
+十台机器组成一个小的HDFS集群，其中namenode机器本身由于并不是datanode，所以可以认为是一台在集群之外的client机 器。 考虑到这里测试的目的主要是为了检验机架信息对hdfs选块和写数据的性能影响，所以只要能模仿出大数据多分块，并依此得出namenode选块的数据就 可以推测出真实环境的情况，所以在这里，将hdfs的分块大小设置成了32KB，这样几MB的数据就能分出很多的block，达到测试选块策略数据的目 的。
+另外，为了获取namenode在接到写block数据的请求后选择的数据块datanode的列表，在hadoop NameNode代码中相应的选块结束后的地方加入了日志信息，将选好的datanode列表打印到namnode log中，一遍依此作为原始数据进行分析。
+
+
+将测试case分成如下几种：
+
+没有配置rack情况：
+从client机器（namenode）连续推送10个2.6MB的数据到HDFS，获取在namenode中新增的log信息。
+分别在9台datanode上推送一个2.6MB的数据到HDFS，获取在namenode中新增的log信息。
+
+将9台datanode分成两个rack情况：
+从client机器（namenode）连续推送10个2.6MB的数据到HDFS，获取在namenode中新增的log信息。
+分别在9台datanode上推送一个2.6MB的数据到HDFS，获取在namenode中新增的log信息。
+
+将9台datanode分成三个rack情况：
+从client机器（namenode）连续推送10个2.6MB的数据到HDFS，获取在namenode中新增的log信息。
+分别在9台datanode上推送一个2.6MB的数据到HDFS，获取在namenode中新增的log信息。
+
+在以上六种情况下，分别获取在namenode代码中加入的日志信息，这些日志信息的格式如下：
+
+======== print the block locations of blk_25561 ========
+/user/luoli/testrack/testfile_filename1   /rack1  10.32.19.25 hostname1
+/user/luoli/testrack/testfile_filename1   /rack0  10.32.19.27 hostname2
+/user/luoli/testrack/testfile_filename1   /rack0  10.32.19.24 hostname3
+
+从该日志中，能够很清楚的看到，某个推送到hdfs的文件的文件名，block信息，每个block分别被写入到了哪个rack下的哪台机器上。 并且是根据block写入顺序进行排序。因此，通过该log信息，就比较容易的分辨出在有rack和没有配置rack信息的情况下，每个block写入 hdfs时是否有在不同rack间穿越的情况，造成网络流量的浪费。
+对于以上的六种case，获取的日志分别命名为：
+
+
+norack_client_log
+norack_datanode_log
+
+2rack_client_log
+2rack_datanode_log
+
+3rack_client_log
+3rack_datanode_log
+
+以上几种情况的数据，分析结果如下：
+
+[luoli@***** big_log_bak]$ ../analyze.pl 2rack_client_log 2 
+trs_rack_block: 0       all blocks: 800
+The block across racks twice percent: 0.00
+[luoli@***** big_log_bak]$ ../analyze.pl 2rack_datanode_log 2
+trs_rack_block: 0       all blocks: 720
+The block across racks twice percent: 0.00
+[luoli@***** big_log_bak]$ ../analyze.pl 3rack_client_log 3 
+trs_rack_block: 0       all blocks: 800
+The block across racks twice percent: 0.00
+[luoli@***** big_log_bak]$ ../analyze.pl 3rack_datanode_log 3
+trs_rack_block: 0       all blocks: 720
+The block across racks twice percent: 0.00
+[luoli@***** big_log_bak]$ ../analyze.pl norack_client_log 2
+trs_rack_block: 214     all blocks: 800
+The block across racks twice percent: 0.27
+[luoli@***** big_log_bak]$ ../analyze.pl norack_client_log 3
+trs_rack_block: 434     all blocks: 800
+The block across racks twice percent: 0.54
+[luoli@***** big_log_bak]$ ../analyze.pl norack_client_log 4
+trs_rack_block: 543     all blocks: 800
+The block across racks twice percent: 0.68
+
+    
+从以上数据可以很明显的看出，在配置了机架信息的时候，每个数据block的写入都不会产生三个block要跨两次机架的情况。
+
+而当没有配置机架信息时，可以看出
+假设集群在物理上是分成2个机架，那么产生一个block写入要两次跨越机架的情况的可能性为 27%
+假设集群在物理上是分成3个机架，那么产生一个block写入要两次跨越机架的情况的可能性为 54%
+假设集群在物理上是分成4个机架，那么产生一个block写入要两次跨越机架的情况的可能性为 68%
+从该测试数据中可以看出，正确的机架信息对hadoop HDFS的网络性能有着很大的影响。应该引起hadoop系统管理员的注意。
+
+原文地址：http://blog.csdn.net/AE86_FC/archive/2010/03/27/5423637.aspx
+分享到：

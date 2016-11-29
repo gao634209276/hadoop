@@ -1,0 +1,73 @@
+目录
+2	测试	1
+2.1	Hadoop Shell介绍	1
+2.2	HDFS测试	1
+2.2.1	对HDFS文件系统进行查看文件,对文件或者文件的基本操作.(通过明令哈的方式交互)	1
+2.2.2	HDFS管理名利fs和作业管理命令job	2
+2.2.3	作业提交命令jar	3
+2.2.4	通过shell的提示功能,完成jar命令:	3
+2.2.5	WordCount程序	4
+2.2.6	MapReduce程序的测试,单词频路统计	6
+3	结合WordCount讲解Hadoop的数据存储和数据计算	6
+
+
+1 测试
+1.1 Hadoop Shell介绍
+bin目录下的Hadoop脚本是最基础的集群管理脚本,用户可以通过该脚本完成各种功能,如HDFS文件管理,MapReduce作业管理等,该脚本的使用方法为:
+hadoop [--config confdir] COMMAND
+其中,--config用于设置Hadoop配置文件目录,默认为${HADOOP_HOME}/conf
+COMMAND是具体的某个命令,常用的有HDFS管理命令fs,作业管理命令job和作业提交命令jar等
+1.2 HDFS测试
+1.2.1 对HDFS文件系统进行查看文件,对文件或者文件的基本操作.(通过命令行的方式交互)
+
+hadoop [--config confdir] COMMAND
+1.2.2 HDFS管理名利fs和作业管理命令job
+他们的用法一样均为:
+bin/hadoop [genericOptions]	[commandOptions]
+其中,command可以是fs或者job,genericOptions是一些通用项,commandOptins是fs或者job附加的命令选项如:
+[hadoop@hadoop-master conf]$ hadoop fs -mkdir /wc/
+其他选项可以通过以下方式了解
+[hadoop@hadoop-master conf]$ hadoop --config /opt/modules/hadoop-1.2.1/conf/ fs
+
+通过提示信息可以知道用法
+启动hadoop	[hadoop@hadoop-master conf]$ start-all.sh
+执行[hadoop@hadoop-master conf]$ hadoop fs -ls /
+
+hadoop fs [-put <localsrc> ... <dst>]
+[hadoop@hadoop-master conf]$ hadoop fs -put *.xml /wc/input/
+1.2.3 作业提交命令jar
+这个命令的用法是:
+hadoop jar <jar> [mainClass] args..
+其中,<jar>表示jar包名:mainClass 表示main class 名称.可以不必输入而又jar命令自动搜索:args是main class 输入参数.
+1.2.4 通过shell的提示功能,完成jar命令:
+ [hadoop@hadoop-master conf]$ hadoop jar
+RunJar jarFile [mainClass] args...
+[hadoop@hadoop-master conf]$ hadoop jar ../hadoop-examples-1.2.1.jar
+
+[hadoop@hadoop-master conf]$ hadoop jar ../hadoop-examples-1.2.1.jar wordcount
+Usage: wordcount <in> <out>
+[hadoop@hadoop-master conf]$ hadoop jar ../hadoop-examples-1.2.1.jar wordcount /wc/input/ /wc/output/
+1.2.5 WordCount程序
+
+浏览器访问查看:
+http://hadoop-master.dragon.org:50030
+
+
+
+
+1.2.6 MapReduce程序的测试,单词频路统计
+[hadoop@hadoop-master conf]$ hadoop fs -lsr /wc/output
+
+[hadoop@hadoop-master conf]$ hadoop fs -text /wc/output/part-r-00000
+
+[hadoop@hadoop-master conf]$ hadoop fs -cat /wc/output/part-r-00000
+2 结合WordCount讲解Hadoop的数据存储和数据计算
+
+
+
+
+MapRedcue Wordcount示例图解
+
+Hadoop部署中的逻辑组件
+
+Hadoop部署中的物理拓扑

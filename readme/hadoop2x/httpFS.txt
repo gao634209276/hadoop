@@ -1,0 +1,94 @@
+http://fatkun.com/2014/11/httpfs-and-webhdfs.html
+webhdfs是namenode、datanode自带的，httpfs是完全独立的一个组件。
+webhdfs上传文件等操作需要通过某个datanode进行，而不是直接通过namenode上传，客户端有可能访问多个机器。而httpfs，所有的操作都通过httpfs进行。
+webhdfs和httpfs的使用方法基本是一样的，只有很小很小的差别。
+HttpFS一些常用的操作
+查看home目录
+curl -i "http://hadoop:14000/webhdfs/v1?user.name=hadoop&op=homedir"
+
+oozie
+http://blog.csdn.net/u014729236/article/details/47188631
+./mkdistro.sh -Phadoop-2 -Dhadoop.auth.version=2.7.2 -Ddistcp.version=2.7.2 -Dsqoop.version=1.4.6 -Dhive.version=1.2.1 -Dhbase.version=1.2.1 -Dpig.version=0.15.0
+
+
+
+hue:
+https://github.com/cloudera/hue
+http://shiyanjun.cn/archives/1002.html
+http://blog.csdn.net/nsrainbow/article/details/43677077
+http://blog.csdn.net/yefengzhichen/article/details/51005588
+hive Hue是出自CDH公司,Hue是开源支持任何版本的hadoop
+ant
+mvn (from maven package or maven3 tarball)
+libtidy-0.99-0 (for unit tests only)
+gcc g++ libffi-dev libkrb5-dev libmysqlclient-dev libsasl2-dev libsasl2-modules-gssapi-mit libsqlite3-dev libssl-dev libxml2-dev libxslt-dev make libldap2-dev
+python-dev python-setuptools libgmp3-dev libz-dev
+make apps编译
+配置hue/desktop/conf/pseudo-distributed.ini文件
+hdfs，yarn，mapreduce，hive，oozie，pig，spark，solr等的ip地址和端口号配置，可根据自己的情况设置，
+
+
+http_host=0.0.0.0
+http_port=8000
+time_zone=Asia/Shanghai
+server_user=search
+server_group=search
+default_user=search
+default_user=search
+# Settings to configure your Hadoop cluster.
+fs_defaultfs=hdfs://h1:8020
+logical_name=h1
+webhdfs_url=http://h1:50070/webhdfs/v1
+security_enabled=false
+umask=022
+hadoop_conf_dir=/home/search/hadoop/etc/hadoop
+
+# Configuration for YARN (MR2)
+resourcemanager_host=h1
+resourcemanager_port=8032
+submit_to=True
+resourcemanager_api_url=http://h1:8088
+proxy_api_url=http://h1:8088
+history_server_api_url=http://h1:19888
+[[mapred_clusters]]
+jobtracker_host=h1
+# Settings to configure the Filebrowser app
+oozie_url=http://h1:11000/oozie
+remote_deployement_dir=/user/hue/oozie/deployments
+
+# Settings to configure the Oozie app
+local_data_dir=apps/oozie/examples/
+remote_data_dir=apps/oozie/workspaces
+oozie_jobs_count=100
+enable_cron_scheduling=true
+
+# Settings to configure Beeswax with Hive
+hive_server_host=h1
+hive_server_port=10000
+hive_conf_dir=/home/search/hive/conf
+server_conn_timeout=120
+browse_partitioned_table_limit=250
+download_row_limit=1000000
+# Settings to configure Pig
+local_sample_dir=/home/search/hue/apps/pig/examples
+remote_data_dir=/home/search/pig/examples
+# Settings to configure Sqoop
+server_url=http://h1:12000/sqoop
+# Settings to configure HBase Browser
+# Settings to configure Solr Search
+# Settings to configure the Zookeeper application.
+host_ports=zk1:2181
+# Settings to configure the Spark application.
+server_url=http://h1:8080/
+# Settings for the User Admin application
+启动hue，执行命令：build/env/bin/supervisor
+ip+8000端口来查看
+hive的metastrore的服务和hiveserver2服务都需要启动
+bin/hive --service metastore
+bin/hiveserver2
+关闭的hive的SAL认证，否则，使用hue访问会出现问题
+hive.server2.thrift.port 10000
+hive.server2.thrift.bind.host h1
+hive.server2.authentication NOSASL
+把hive.server2.long.polling.timeout的参数值，默认是5000L给改成5000
+hue也需要在hadoop的core-site.xml里面配置相应的代理用户

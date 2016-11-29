@@ -1,0 +1,146 @@
+1 MR编程模型回顾
+MapReduce编程接口介绍
+Java编程
+多语言编程
+总结
+MapReduce将整个运行过程分为两个阶段Map阶段和Reduce阶段
+Map阶段由一定数量的Map Task组成
+输入数据分析:InputFormat(代码设置)
+输入数据处理:Mapper(代码实现)
+数据分组:Partitioner(代码设置)
+Reduce阶段由一定数据量的Reduce Task组成
+数据远程拷贝
+数据按照key排序
+数据处理:Reduce(代码实现)
+数据输出格式:OutputFormat(代码设置)
+
+用户只用实现一下部分,其他有hadoop框架实现
+Map阶段
+InputFormat(默认TestInputFormat)
+Mapper
+combiner(local reducer)
+Partitioner
+Reduce阶段
+Reduce
+OutputFormat(默认TestOutputFormat)
+2 MapReduce编程接口
+2.1 Hadoop提供了三种编程方式
+Java(最原始的方式)
+Hadoop Streaming(支持多语言,任何)
+Hadoop Pipes(支持C/C++)
+Java编程接口是所有编程方式的基础;
+不同的编程接口是暴露给用户的形式不同而已,内部执行引擎是完全一样的
+不同的编程方式效率不同.Java原始但效率高,经过封装后其他语言编程稍微低点.
+1.1.1 Java编程接口组成
+旧API和新API
+新ApI具有更好的扩展性;
+两只能够编程接口只是暴露给用户的形式不同而已,内部执行引擎是一样的;旧API可以完全兼容Hadoop2.0,但新API不行.
+1.1.2 Hadoop Streaming
+与Linux管道机制一致,通过标注您输入输出是实现进程间通信,标准输入输出是任何语言都有的,例如:
+cat 1.txt|grep “dong” | sort
+cat 1.txt|python grep.py| java sort.jar
+1.1.3 Hadoop Streaming/Piges
+
+2.2 Java编程
+实例1:WordCount问题
+
+Map阶段
+
+Reduce阶段
+
+
+Mapper设计与实现
+
+reducer设计与实现
+
+main函数设计与实现
+
+程序运行
+
+结果输出统计
+
+输入数据格式解析
+使用的TextInputFormat
+每个Map Task处理一个split;一个split大小等于一个block;如果最后一行数据被截断,则读取后一个block前半部分;转换成key/value对,key是偏移量,value是行内容.
+
+数据流过程
+
+InputFormat-输入数据分析
+
+默认为TestInputFormat,针对文本文件的;用户可以通过参数mapred.input.format.class设置InputFormat实现
+Mapper-map处理逻辑
+
+新API位于org.apache.hadoop.mapreduce.Mapper中,现在使用新API
+Partitioner-map输入结构分片
+
+Reduce-reduce处理逻辑
+
+新API位于org.apache.hadoop.mapreduce.Reducer中.更加灵活
+小结合
+
+实例2:Grep问题
+一批Tb或者PB量级的文档,需要完成以下功能:
+搜索符合某种规则(正则表达式)的单词或者句子;
+统计相应的单词或者句子的数目;
+按照数目对其进行排序,并输出最终结果
+Grep问题解决思路
+分为两个作业:
+作业1:WordCount
+统计符合某种负责的单词数目
+作业2:Sort
+按照单词数据进行全排序
+依赖于前一个作业的输出结果
+设置一个map的job
+
+设置一个grep的job
+
+RegexMapper类继承正则表达式并实现Mapper
+
+InverseMapper实现Map类
+
+Grep程序运行
+
+2.3 多语言程序设计思路
+以标准输入流作为输入;
+C++:cin
+C:scanf
+以标准输出流作为输出
+C++ : count
+C: printf
+可实现Mapper和Reducer,其他组件(InputFormat,Partitioner等需要用Java语言实现)
+最常用的是写Mapper和Redcer,复杂的程序写一次,大家以后不再改.
+1.1.4 实例1:用C++实现Wordcount
+mapper
+
+
+reducer
+
+
+
+编译程序,生成可执行文件;
+g++ -o wc_mapper mapper.cpp
+g++ -o wc_reduce reducer.cpp
+测试程序:
+cat test.txt| ./wc_mappper | sort | ./wc_reducer
+Hadoop 上运行wordcount程序
+写成一个脚本,以便于以后重复使用
+
+Streaming程序运行方式说明
+“-D” 参数:一定要放在所有参数前面,可以有多个;
+“-file” 或者”-files”参数,设置要分发到各个节点上的文件,对于mapper和reducer文件,比喻要用或者”-files”指定
+每次运行程序前,清空输入目录
+bin/hadoop fs -rmr /test/output
+
+1.1.5 实例2:用PHP实现Wordcount
+
+测试mapper和reducer
+cat test.txt | php mapper.php sort | php reducer.php
+在Hadoop上运行
+
+2.4 Java与Stream编程方式比较
+Java编程
+Hadoop最原始开发语言;支持所有功能,是其他编程方式的基础;
+Stream编程
+仅用于开发Mapper和Reducer,其他组件需采用Java实现;
+天生支持文本格式,但二进制格式支持较弱;
+通常用于简单的文本数据处理,加快开发效率

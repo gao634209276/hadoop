@@ -1,0 +1,436 @@
+1.HDFS
+　　HDFS（Hadoop Distributed File System）是Hadoop项目的核心子项目，是分布式计算中数据存储管理的基础，是基于流数据模式访问和处理超大文件的需求而开发的，可以运行于廉价的商用服务器上。它所具有的高容错、高可靠性、高可扩展性、高获得性、高吞吐率等特征为海量数据提供了不怕故障的存储，为超大数据集（Large Data Set）的应用处理带来了很多便利。
+　　Hadoop整合了众多文件系统，在其中有一个综合性的文件系统抽象，它提供了文件系统实现的各类接口，HDFS只是这个抽象文件系统的一个实例。提供了一个高层的文件系统抽象类org.apache.hadoop.fs.FileSystem，这个抽象类展示了一个分布式文件系统，并有几个具体实现，如下表1-1所示。
+表1-1 Hadoop的文件系统
+文件系统
+URI方案
+Java实现
+（org.apache.hadoop）
+定义
+Local
+file
+fs.LocalFileSystem
+支持有客户端校验和本地文件系统。带有校验和的本地系统文件在fs.RawLocalFileSystem中实现。
+HDFS
+hdfs
+hdfs.DistributionFileSystem
+Hadoop的分布式文件系统。
+HFTP
+hftp
+hdfs.HftpFileSystem
+支持通过HTTP方式以只读的方式访问HDFS，distcp经常用在不同的HDFS集群间复制数据。
+HSFTP
+hsftp
+hdfs.HsftpFileSystem
+支持通过HTTPS方式以只读的方式访问HDFS。
+HAR
+har
+fs.HarFileSystem
+构建在Hadoop文件系统之上，对文件进行归档。Hadoop归档文件主要用来减少NameNode的内存使用。
+KFS
+kfs
+fs.kfs.KosmosFileSystem
+Cloudstore（其前身是Kosmos文件系统）文件系统是类似于HDFS和Google的GFS文件系统，使用C++编写。
+FTP
+ftp
+fs.ftp.FtpFileSystem
+由FTP服务器支持的文件系统。
+S3（本地）
+s3n
+fs.s3native.NativeS3FileSystem
+基于Amazon S3的文件系统。
+S3（基于块）
+s3
+fs.s3.NativeS3FileSystem
+基于Amazon S3的文件系统，以块格式存储解决了S3的5GB文件大小的限制。
+Hadoop提供了许多文件系统的接口，用户可以使用URI方案选取合适的文件系统来实现交互。
+
+
+2.
+2.1数据块
+HDFS(Hadoop Distributed File System)默认的最基本的存储单位是64M的数据块。
+和普通文件系统相同的是，HDFS中的文件是被分成64M一块的数据块存储的。
+不同于普通文件系统的是，HDFS中，如果一个文件小于一个数据块的大小，并不占用整个数据块存储空间。
+2.2namenode 和datanode
+　HDFS体系结构中有两类节点，一类是NameNode，又叫"元数据节点"；另一类是DataNode，又叫"数据节点"。这两类节点分别承担Master和Worker具体任务的执行节点。
+　　1）元数据节点用来管理文件系统的命名空间
+其将所有的文件和文件夹的元数据保存在一个文件系统树中。
+这些信息也会在硬盘上保存成以下文件：命名空间镜像(namespace image)及修改日志(edit log)
+其还保存了一个文件包括哪些数据块，分布在哪些数据节点上。然而这些信息并不存储在硬盘上，而是在系统启动的时候从数据节点收集而成的。
+　　2）数据节点是文件系统中真正存储数据的地方。
+客户端(client)或者元数据信息(namenode)可以向数据节点请求写入或者读出数据块。
+其周期性的向元数据节点回报其存储的数据块信息。
+　　3）从元数据节点（secondary namenode）
+从元数据节点并不是元数据节点出现问题时候的备用节点，它和元数据节点负责不同的事情。
+其主要功能就是周期性将元数据节点的命名空间镜像文件和修改日志合并，以防日志文件过大。
+合并过后的命名空间镜像文件也在从元数据节点保存了一份，以防元数据节点失败的时候，可以恢复。
+3. HDFS体系结构
+　　HDFS是一个主/从（Mater/Slave）体系结构，从最终用户的角度来看，它就像传统的文件系统一样，可以通过目录路径对文件执行CRUD（Create、Read、Update和Delete）操作。但由于分布式存储的性质，HDFS集群拥有一个NameNode和一些DataNode。NameNode管理文件系统的元数据，DataNode存储实际的数据。客户端通过同NameNode和DataNodes的交互访问文件系统。客户端联系NameNode以获取文件的元数据，而真正的文件I/O操作是直接和DataNode进行交互的。
+
+
+图3.1 HDFS总体结构示意图
+
+　　1）NameNode、DataNode和Client
+NameNode可以看作是分布式文件系统中的管理者，主要负责管理文件系统的命名空间、集群配置信息和存储块的复制等。NameNode会将文件系统的Meta-data存储在内存中，这些信息主要包括了文件信息、每一个文件对应的文件块的信息和每一个文件块在DataNode的信息等。
+DataNode是文件存储的基本单元，它将Block存储在本地文件系统中，保存了Block的Meta-data，同时周期性地将所有存在的Block信息发送给NameNode。
+Client就是需要获取分布式文件系统文件的应用程序。
+　　2）文件写入
+Client向NameNode发起文件写入的请求。
+NameNode根据文件大小和文件块配置情况，返回给Client它所管理部分DataNode的信息。
+Client将文件划分为多个Block，根据DataNode的地址信息，按顺序写入到每一个DataNode块中。
+　　3）文件读取
+Client向NameNode发起文件读取的请求。
+NameNode返回文件存储的DataNode的信息。
+Client读取文件信息。
+
+HDFS典型的部署是在一个专门的机器上运行NameNode，集群中的其他机器各运行一个DataNode；也可以在运行NameNode的机器上同时运行DataNode，或者一台机器上运行多个DataNode。一个集群只有一个NameNode的设计大大简化了系统架构。
+
+4.1HDFS优点
+
+1）处理超大文件
+　　这里的超大文件通常是指百MB、设置数百TB大小的文件。目前在实际应用中，HDFS已经能用来存储管理PB级的数据了。
+　　2）流式的访问数据
+　　HDFS的设计建立在更多地响应"一次写入、多次读写"任务的基础上。这意味着一个数据集一旦由数据源生成，就会被复制分发到不同的存储节点中，然后响应各种各样的数据分析任务请求。在多数情况下，分析任务都会涉及数据集中的大部分数据，也就是说，对HDFS来说，请求读取整个数据集要比读取一条记录更加高效。
+　　3）运行于廉价的商用机器集群上
+Hadoop设计对硬件需求比较低，只须运行在低廉的商用硬件集群上，而无需昂贵的高可用性机器上。廉价的商用机也就意味着大型集群中出现节点故障情况的概率非常高。这就要求设计HDFS时要充分考虑数据的可靠性，安全性及高可用性。
+
+
+
+4.2 HDFS的缺点
+1）不适合低延迟数据访问
+　　如果要处理一些用户要求时间比较短的低延迟应用请求，则HDFS不适合。HDFS是为了处理大型数据集分析任务的，主要是为达到高的数据吞吐量而设计的，这就可能要求以高延迟作为代价。
+　　改进策略：对于那些有低延时要求的应用程序，HBase是一个更好的选择。通过上层数据管理项目来尽可能地弥补这个不足。在性能上有了很大的提升，它的口号就是goes real time。使用缓存或多master设计可以降低client的数据请求压力，以减少延时。还有就是对HDFS系统内部的修改，这就得权衡大吞吐量与低延时了，HDFS不是万能的银弹。
+　　2）无法高效存储大量小文件
+　　因为Namenode把文件系统的元数据放置在内存中，所以文件系统所能容纳的文件数目是由Namenode的内存大小来决定。一般来说，每一个文件、文件夹和Block需要占据150字节左右的空间，所以，如果你有100万个文件，每一个占据一个Block，你就至少需要300MB内存。当前来说，数百万的文件还是可行的，当扩展到数十亿时，对于当前的硬件水平来说就没法实现了。还有一个问题就是，因为Map task的数量是由splits来决定的，所以用MR处理大量的小文件时，就会产生过多的Maptask，线程管理开销将会增加作业时间。举个例子，处理10000M的文件，若每个split为1M，那就会有10000个Maptasks，会有很大的线程开销；若每个split为100M，则只有100个Maptasks，每个Maptask将会有更多的事情做，而线程的管理开销也将减小很多。
+　　改进策略：要想让HDFS能处理好小文件，有不少方法。
+利用SequenceFile、MapFile、Har等方式归档小文件，这个方法的原理就是把小文件归档起来管理，HBase就是基于此的。对于这种方法，如果想找回原来的小文件内容，那就必须得知道与归档文件的映射关系。
+横向扩展，一个Hadoop集群能管理的小文件有限，那就把几个Hadoop集群拖在一个虚拟服务器后面，形成一个大的Hadoop集群。google也是这么干过的。
+多Master设计，这个作用显而易见了。正在研发中的GFS II也要改为分布式多Master设计，还支持Master的Failover，而且Block大小改为1M，有意要调优处理小文件啊。
+附带个Alibaba DFS的设计，也是多Master设计，它把Metadata的映射存储和管理分开了，由多个Metadata存储节点和一个查询Master节点组成。
+　　3）不支持多用户写入及任意修改文件
+　　在HDFS的一个文件中只有一个写入者，而且写操作只能在文件末尾完成，即只能执行追加操作。目前HDFS还不支持多个用户对同一文件的写操作，以及在文件任意位置进行修改。
+
+*************************************
+5. HDFS 操作
+5 创建目录
+[hadoop@h101 hadoop-1.2.1]$ hadoop fs -mkdir output
+
+5.1 列出 文件
+   [hadoop@h101 ~]$ hadoop fs -ls
+5.2 列出某个文件夹中的文件
+  [hadoop@h101 ~]$ hadoop fs -ls output
+5.3 上传abc文件,并命名为test
+   [hadoop@h101 ~]$ hadoop fs -put /home/hadoop/abc test
+5.4  复制文件到本地 文件系统
+   [hadoop@h101 ~]$ hadoop fs -get test /home/hadoop/cba
+5.5 删除HDFS 中的文件
+   [hadoop@h101 ~]$ hadoop fs -rmr test
+5.6 查看HDFS 中的文件
+   [hadoop@h101 ~]$ hadoop fs -cat test
+5.7 报告HDFS 基本统计信息
+    [hadoop@h101 ~]$ hadoop dfsadmin -report
+5.8 安全模式
+NameNode在启动的时候首先进入安全模式，如果 datanode 丢失的block达到一定的比例（1-dfs.safemode.threshold.pct），则系统会一直处于安全模式状态即只读状态。
+dfs.safemode.threshold.pct（缺省值0.999f）表示HDFS启动的时候，如果DataNode上报的block个数达到了元 数据 记录的block个数的0.999倍才可以离开安全模式，否则一直是这种只读模式。如果设为1则HDFS永远是处于SafeMode。
+退出安全模式
+[hadoop@h101 ~]$ hadoop dfsadmin -safemode leave
+
+进入安全模式
+[hadoop@h101 ~]$ hadoop dfsadmin -safemode enter
+
+
+
+
+6.HDFS  API
+
+环境准备:
+拷贝hadoop 的jar包到java下
+
+[root@h101 ~]# cd /usr/jdk1.7.0_25/jre/lib/ext/
+[root@h101 ext]# cp /home/hadoop/hadoop-1.2.1/lib/*.jar .
+[root@h101 ext]# cp /home/hadoop/hadoop-1.2.1/*.jar .
+[root@h101 ~]# chmod -R 777 /usr/jdk1.7.0_25/
+
+另一节点同样配置
+
+
+6.1 上传文件到 hdfs中
+[hadoop@h101 jdk1.7.0_25]$ vi CopyFile.java
+
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileStatus;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+
+public class CopyFile {
+    public static void main(String[] args) throws Exception {
+        Configuration conf=new Configuration();
+        FileSystem hdfs=FileSystem.get(conf);
+
+        Path src =new Path("/home/hadoop/bbb/b1");
+
+        Path dst =new Path("hdfs://h101:9000/user/hadoop");
+
+        hdfs.copyFromLocalFile(src, dst);
+        System.out.println("Upload to"+conf.get("fs.default.name"));
+
+        FileStatus files[]=hdfs.listStatus(dst);
+
+        for(FileStatus file:files){
+            System.out.println(file.getPath());
+        }
+    }
+}
+
+
+
+
+[hadoop@h101 jdk1.7.0_25]$ /usr/jdk1.7.0_25/bin/javac CopyFile.java
+[hadoop@h101 jdk1.7.0_25]$ /usr/jdk1.7.0_25/bin/java CopyFile
+*****如果保错 :Wrong FS: hdfs://h101:9000/user/hadoop, expected: file:///***
+
+把core-site.xml和hdfs-site.xml放到当前目录下
+[hadoop@h101 jdk1.7.0_25]$ cp /home/hadoop/hadoop-1.2.1/conf/core-site.xml .
+[hadoop@h101 jdk1.7.0_25]$ cp /home/hadoop/hadoop-1.2.1/conf/hdfs-site.xml .
+
+再次执行
+[hadoop@h101 jdk1.7.0_25]$ /usr/jdk1.7.0_25/bin/java CopyFile
+
+
+
+
+6.2 hdfs中创建文件
+[hadoop@h101 jdk1.7.0_25]$ vi CreateFile.java
+
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FSDataOutputStream;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+
+public class CreateFile {
+
+    public static void main(String[] args) throws Exception {
+
+        Configuration conf=new Configuration();
+        FileSystem hdfs=FileSystem.get(conf);
+
+        byte[] buff="hello hadoop world!\n".getBytes();
+
+        Path dfs=new Path("hdfs://h210:9000/user/hadoop/hellow.txt");
+
+
+        FSDataOutputStream outputStream=hdfs.create(dfs);
+        outputStream.write(buff,0,buff.length);
+
+
+
+    }
+
+}
+
+
+
+[hadoop@h101 jdk1.7.0_25]$ /usr/jdk1.7.0_25/bin/javac CreateFile.java
+[hadoop@h101 jdk1.7.0_25]$ /usr/jdk1.7.0_25/bin/java CreateFile
+
+[hadoop@h101 jdk1.7.0_25]$ hadoop fs -ls
+[hadoop@h101 jdk1.7.0_25]$ hadoop fs -cat hellow.txt
+
+
+
+6.3 创建HDFS目录
+[hadoop@h101 jdk1.7.0_25]$ vi CreateDir.java
+
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+
+public class CreateDir {
+
+    public static void main(String[] args) throws Exception{
+
+        Configuration conf=new Configuration();
+        FileSystem hdfs=FileSystem.get(conf);
+
+        Path dfs=new Path("hdfs://h101:9000/user/hadoop/TestDir");
+
+        hdfs.mkdirs(dfs);
+    }
+}
+
+[hadoop@h101 jdk1.7.0_25]$ /usr/jdk1.7.0_25/bin/javac CreateDir.java
+[hadoop@h101 jdk1.7.0_25]$ /usr/jdk1.7.0_25/bin/java CreateDir
+
+[hadoop@h101 jdk1.7.0_25]$ hadoop fs -ls
+
+
+
+6.4 hdfs 重命名文件
+[hadoop@h101 jdk1.7.0_25]$ vi Rename.java
+
+
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+
+public class Rename{
+    public static void main(String[] args) throws Exception {
+
+        Configuration conf=new Configuration();
+        FileSystem hdfs=FileSystem.get(conf);
+
+        Path frpaht=new Path("hdfs://h101:9000/user/hadoop/b1");    //旧的文件名
+        Path topath=new Path("hdfs://h101:9000/user/hadoop/bb111");    //新的文件名
+
+        boolean isRename=hdfs.rename(frpaht, topath);
+
+        String result=isRename?"成功":"失败";
+
+        System.out.println("文件重命名结果为："+result);
+
+    }
+}
+
+
+[hadoop@h101 jdk1.7.0_25]$ /usr/jdk1.7.0_25/bin/javac Rename.java
+[hadoop@h101 jdk1.7.0_25]$ /usr/jdk1.7.0_25/bin/java Rename
+文件重命名结果为：成功
+
+[hadoop@h101 jdk1.7.0_25]$ hadoop fs -ls
+
+
+6.5删除hdfs 上的文件
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+
+public class DeleteFile {
+
+    public static void main(String[] args) throws Exception {
+
+        Configuration conf=new Configuration();
+        FileSystem hdfs=FileSystem.get(conf);
+
+        Path delef=new Path("hdfs://h101:9000/user/hadoop/bb111");
+
+        boolean isDeleted=hdfs.delete(delef,false);
+
+        //递归删除
+        //boolean isDeleted=hdfs.delete(delef,true);
+
+        System.out.println("Delete?"+isDeleted);
+    }
+}
+
+[hadoop@h101 jdk1.7.0_25]$ /usr/jdk1.7.0_25/bin/javac DeleteFile.java
+[hadoop@h101 jdk1.7.0_25]$ /usr/jdk1.7.0_25/bin/java DeleteFile
+Delete?true
+[hadoop@h101 jdk1.7.0_25]$ hadoop fs -ls
+
+
+6.6查看文件是否存在
+[hadoop@h101 jdk1.7.0_25]$ vi CheckFile.java
+
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+
+public class CheckFile {
+    public static void main(String[] args) throws Exception {
+
+        Configuration conf=new Configuration();
+
+        FileSystem hdfs=FileSystem.get(conf);
+
+        Path findf=new Path("hdfs://h101:9000/user/hadoop/hellow.txt");
+
+        boolean isExists=hdfs.exists(findf);
+
+        System.out.println("Exist?"+isExists);
+
+    }
+}
+[hadoop@h101 jdk1.7.0_25]$ /usr/jdk1.7.0_25/bin/javac CheckFile.java
+[hadoop@h101 jdk1.7.0_25]$ /usr/jdk1.7.0_25/bin/java CheckFile
+Exist?true
+
+
+
+
+
+
+6.7 查看HDFS文件最好修改时间
+[hadoop@h101 jdk1.7.0_25]$ vi GetLTime.java
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileStatus;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+
+
+public class GetLTime {
+
+
+    public static void main(String[] args) throws Exception {
+
+        Configuration conf=new Configuration();
+        FileSystem hdfs=FileSystem.get(conf);
+
+        Path fpath =new Path("hdfs://h101:9000/user/hadoop/hellow.txt");
+
+        FileStatus fileStatus=hdfs.getFileStatus(fpath);
+
+        long modiTime=fileStatus.getModificationTime();
+
+        System.out.println("file1.txt的修改时间是"+modiTime);
+    }
+}
+
+[hadoop@h101 jdk1.7.0_25]$ /usr/jdk1.7.0_25/bin/javac GetLTime.java
+[hadoop@h101 jdk1.7.0_25]$ /usr/jdk1.7.0_25/bin/java GetLTime
+file1.txt的修改时间是1406749398648
+
+****时间格式:Coordinated Universal Time(CUT) 协调世界时
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+===================================
+6.1 查看 hdfs文件
+ [hadoop@h101 jdk1.7.0_25]$ vi URLcat.java
+
+import java.io.InputStream;
+import java.net.URL;
+
+import org.apache.hadoop.fs.FsUrlStreamHandlerFactory;
+import org.apache.hadoop.io.IOUtils;
+
+public class URLcat{
+        static {
+                URL.setURLStreamHandlerFactory(new FsUrlStreamHandlerFactory());
+        }
+
+        public static void main(String[] args) throws Exception {
+                InputStream in = null;
+                try {
+                        in = new URL(args[0]).openStream();
+                        IOUtils.copyBytes(in, System.out, 4086, false);
+                } finally {
+                        IOUtils.closeStream(in);
+                }
+        }
+}
+
+
+[hadoop@h101 jdk1.7.0_25]$ /usr/jdk1.7.0_25/bin/javac URLcat.java
+[hadoop@h101 jdk1.7.0_25]$ /usr/jdk1.7.0_25/bin/java URLcat hdfs://h101:9000/user/hadoop/test.txt
+

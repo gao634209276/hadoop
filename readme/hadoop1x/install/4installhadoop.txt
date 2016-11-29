@@ -1,0 +1,227 @@
+1. 目录
+1	配置文件	2
+1.1	三大基础文件	2
+1.2	配置文件masters和slaves	3
+1.3	NameNode配置	3
+1.4	JobTracker配置	3
+1.5	SecondaryNanmNode配置	3
+1.6	DataNode和TaskTracker配置	3
+2	分析启动脚本	3
+2.1	分析Start-all脚本:	4
+2.2	查看start-dfs.sh脚本	4
+2.3	hadoop-daemon.sh脚本	5
+2.4	hadoop-daemons.sh脚本	5
+3	去除警告	6
+4	--config用法	6
+4.1	--config confdir用法原理讲解:	6
+4.2	config用法	7
+5	Hadoop目录结构	7
+5.1	README文档	7
+5.2	src: Hadoop源代码所在的目录	8
+5.3	lib: Hadoop运行时依赖的三方库	9
+5.4	bin: 运行以及管理Hadoop集群相关的脚本.	9
+5.5	Hadoop的其他子目录	9
+6	Eclipse导入Hadoop源码项目	10
+
+
+1 配置文件
+
+1.1 三大基础文件
+core-site.xml:配置Hadoop Common Project 相关的属性配置.Hadoop1.x甚至是2.x框架的基础属性的配置
+
+
+hdaf-site.xml:配置HDFS Project文件系统先关属性
+mapred-site.xml: 配置MapReduce框架的相关配置
+1.2 配置文件masters和slaves
+masters:主节点,并不是配置Hadoop中的主节点的相关信息,配置HDFS文件系统辅助节点的信息
+slaves:从节点,配置Hadoop1.x中HDFS和MapReduce框架的从节点信息
+Hadoop1.x五大服务(守护进程):
+NameNode,DataNode,SecondaryNameNode,	JobTracker,TaskTracker
+1.3 NameNode配置
+<property>
+		<name>fs.default.name</name>
+		(hdfs中NameNode的IP地址(主机名)和端口号)
+		<value>hdfs://hadoop-master.dragon.org:9000</value>
+	</property>
+	<property>
+		<name>hadoop.tmp.dir</name>
+		(hadoop在本地文件系统中的目录)
+		<value>/opt/data/tmp</value>
+	</property>
+1.4 JobTracker配置
+<property>(指定JobTracker的主机与端口号)
+		<name>mapred.job.tracker</name>
+		<value>hadoop-master.dragon.org:9001</value>
+	</property>
+1.5 SecondaryNanmNode配置
+masters.xml配置:		hadoop-naster.dragon.org
+SecondaryNameNode的位置:属于管理层,不一定与NameNode在同一台主机上
+1.6 DataNode和TaskTracker配置
+slaves.xml配置:		hadoop-master.dragon.org
+DataNode和TaskTracker属于应用层,伪分布式只有一台主机,还是设置为本机地址
+2 分析启动脚本
+启动Shell脚本
+
+1.7 分析Start-all脚本:
+
+
+第一点: 此Shell脚本,仅仅在主机节点上执行.
+# Start all hadoop daemons.  Run this on master node.
+第二点:首先启动DFS文件系统的守护进程,再启动MapReduce框架的守护进程.
+# start dfs daemons
+"$bin"/start-dfs.sh --config $HADOOP_CONF_DIR
+
+# start mapred daemons
+"$bin"/start-mapred.sh --config $HADOOP_CONF_DIR
+第三点:启动HDFS文件系统守护时,调用start-dfs.sh Shell脚本;启动MapReduce守护进程时,调用start-mapred.sh Shell脚本.
+1.8 查看start-dfs.sh脚本
+第一点: 此Shell脚本,仅仅在主机节点上执行.
+# Start hadoop dfs daemons.
+# Optinally upgrade or rollback dfs state.
+# Run this on master node.
+第二点:如果先启动DataNode守护进程,在没有启动NameNode守护进程之前,DataNode日志文件中一直出现连接NameNode错误信息.
+# start dfs daemons
+# start namenode after datanodes, to minimize time namenode is up w/o data
+# note: datanodes will log connection errors until namenode starts
+第三点:启动守护进程的顺序
+"$bin"/hadoop-daemon.sh --config $HADOOP_CONF_DIR start namenode $nameStartOpt
+"$bin"/hadoop-daemons.sh --config $HADOOP_CONF_DIR start datanode $dataStartOpt
+"$bin"/hadoop-daemons.sh --config $HADOOP_CONF_DIR --hosts masters start secondarynamenode
+第四点:
+NameNode启动,调用的是hadoop-daemon.sh脚本
+	DataNode和SecondaryNameNode启动调用的是hadoop-daemons.sh脚本
+第五点:在启动SecondaryNameNode服务时,通过指定参数[--hosts masters]制定哪些机器上运行SecondaryNameNode服务,由此也验证了配置文件[masters]配置的IP地址为SecondaryNameNode服务地址.
+1.9 hadoop-daemon.sh脚本
+
+# Runs a Hadoop command as a daemon.
+#
+# Environment Variables
+#
+#   HADOOP_CONF_DIR  Alternate conf dir. Default is ${HADOOP_PREFIX}/conf.
+#   HADOOP_LOG_DIR   Where log files are stored.  PWD by default.
+#   HADOOP_MASTER    host:path where hadoop code should be rsync'd from
+#   HADOOP_PID_DIR   The pid files are stored. /tmp by default.
+#   HADOOP_IDENT_STRING   A string representing this instance of hadoop. $USER by default
+#   HADOOP_NICENESS The scheduling priority for daemons. Defaults to 0.
+##
+用法:
+usage="Usage: hadoop-daemon.sh [--config <conf-dir>] [--hosts hostlistfile] (start|stop) <hadoop-command> <args...>"
+# get log directory		获取/创建日志目录
+日志文件定义:
+export HADOOP_LOGFILE=hadoop-$HADOOP_IDENT_STRING-$command-$HOSTNAME.log
+1.10 hadoop-daemons.sh脚本
+
+# Run a Hadoop command on all slave hosts.
+
+3 去除警告
+Warning: $HADOOP_HOME is deprecated.
+警告的出现:
+启动hadoop时候,首行出现
+解决方案:
+第一种方案:
+去除/etc/profile文件中, export HADOOP_HOME=/opt/modules/hadoop-1.2.1,并且使其生效
+命令:source /etc/profile
+第二种方案
+出现警告的原因配置脚本:hadoop-config.sh有如下代码
+if [ "$HADOOP_HOME_WARN_SUPPRESS" = "" ] && [ "$HADOOP_HOME" != "" ]; then
+  echo "Warning: \$HADOOP_HOME is deprecated." 1>&2
+  echo 1>&2
+fi
+如果要解决这个问题,只要让上述中的$HADOOP_HOME_WARN_SUPPRESS不为空和$HADOOP_HOME为空.至少一个满足条件,就不会产生警告.
+配置/etc/profile文件,添加export HADOOP_HOME_WARN_SUPPRESS=1
+4 --config用法
+
+在shell中输入hadoop后提示:
+[hadoop@hadoop-master java]$ hadoop
+Usage: hadoop [--config confdir] COMMAND
+where COMMAND is one of:
+
+1.11 --config confdir用法原理讲解:
+此处用jdk示例:Linux中安装多种版本jdk,将会有一个软链接指向其中一个版本.
+
+由于hadoop版本众多,往往服务器中安装不止一个hadoop版本,此时在hadoop目录中设置如下结构:
+/hadoop/
+		/hadoop-0.20.2/conf
+		/hadoop-1.0.1/conf
+		/hadoop-1.2.1/conf
+		/conf		软连接
+1.12 config用法
+hadoop-daemon.sh脚本中一段代码:
+usage="Usage: hadoop-daemon.sh [--config <conf-dir>] [--hosts hostlistfile] (start|stop) <hadoop-command> <args...>"
+
+设置一个/hadoop/conf作为软连接,当具体使用某一个版本时:
+1. 使用hadoop-0.20.2版本	/hadoop/conf			/hadoop/hadoop-0.20.2/conf
+启动服务	:进入/hadoop/hadoop-0.20.2/bin
+		命令:start-dfs.sh	--config	/hadoop/conf
+2. 使用hadoop-1.0.1			/hadoop/conf			/hadoop/hadoop-1.0.1/conf
+启动服务	:进入/hadoop/hadoop-0.20.2/bin
+		命令:start-dfs.sh	--config	/hadoop/conf
+3. hadoop-1.2.1				/hadoop/conf			/hadoop/hadoop-1.2.1/conf
+启动同上方法….
+5 Hadoop目录结构
+
+1.13 README文档
+For the latest information about Hadoop, please visit our website at:
+   http://hadoop.apache.org/core/
+and our wiki, at:
+   http://wiki.apache.org/hadoop/
+可用通过wiki查阅官网对hadoop的说明,以及各方面的使用方法.安装配置等.很多丰富资料
+Tutorials中的Hadoop Windows/Eclipse Tutorials
+关于Windows中Eclipse教程.
+在windows下解压打开: 直接解压Hadoop压缩包后,可以看到上图所示的目录结构,其中比较重要的目录有src,conf,lib,bin等,下面分别介绍这几个目录的作用:
+
+
+
+Hadoop1.2.1目录
+
+1.14 src:	Hadoop源代码所在的目录
+最核心的代码所在目录分别是core,hdfs和mapred,他们分别实现了Hadoop最重要的三个模块,即基础公共库,HDFS实现和MapReduce实现
+
+
+1.15 lib:	Hadoop运行时依赖的三方库
+包括编译好的jar包以及其他语言生成的动态库.	Hadoop启动或者用户提交作业时,会自动加载这些库.
+conf:	配置文件所在的目录.
+
+ Hadoop的配置文件比较多,其设计原则可以概括为如下两点.
+	尽可能的模块化,即每个重要模块拥有自己的配置文件,这样使得维护以及管理变得简单.
+	动静分离,即将可动态加载的配置选项剥离出来,组成独立配置文件.
+比如,Hadoop1.0.0版本之前,作业队列权限管理相关的配置选项被放在配置文件mapred-site.xml中,而该文件是不可以动态加载的,每次修改后必须重启MapReduce.	但从1.0.0版本开始,这些配置选项被剥离放到独立配置文件mapred-queue-acls.xml中,该文件可以通过Hadoop命令动态加载.
+conf目录先最重要的配置文件有core-site.xml,hdfs-site.xml和mapred-site.xml,分别设置了基础公共类库core,分布式文件系统HDFS和分布式计算框架MapReduce的配置选项.
+1.16 bin:	运行以及管理Hadoop集群相关的脚本.
+几个常用的脚本:
+hadoop:最基本且功能最完备的管理脚本,其他大部分脚本都会调用该脚本.
+start-all.sh/stop-all.sh:	启动/停止所有节点上HDFS和MapReduce相关服务.
+start-mapred.sh/stop-mapred.sh:	单独启动/停止MapReduce玄关服务.
+start-dfs.sh/stop-dfs.sh:	单独启动/通知HDFS相关服务.
+1.17 Hadoop的其他子目录
+docs:Hadoop官方离线版文档,相关api
+c++:	应用到的c++类库.
+contirb:功能扩展包;
+share:Hadoop的模板.
+libexec:中的libexec/hadoop-config.sh为[--config <conf-dir>]中引用目录;
+
+hadoop-daemon.sh脚本中有如下引用:
+usage="Usage: hadoop-daemon.sh [--config <conf-dir>] [--hosts hostlistfile] (start|stop) <hadoop-command> <args...>"
+有如下判断语句:
+if [ -e "$bin/../libexec/hadoop-config.sh" ]; then
+  . "$bin"/../libexec/hadoop-config.sh
+else
+  . "$bin/hadoop-config.sh"
+fi
+查看libexec/hadoop-config.sh有如下声明
+
+export HADOOP_HOME=${HADOOP_PREFIX}
+export HADOOP_HOME_WARN_SUPPRESS=1
+
+update目录:	Hadoop设置,升级等脚本
+
+6 Eclipse导入Hadoop源码项目
+
+1. 在Eclispe新建一个Java项目 hadoop1.2.1
+2. 将Hadoop压缩包解压目录src下core,hdfs,mapred,tools(可加上example)四个目录copy到上述新建项目的src目录
+
+3. 修改Java Build Path中Sourec,删除src,添加src/core,src/hadf,src/mapred,src/tools几个源码目录
+
+4. 为Java Build Path添加依赖jar, 可以通过导入Hadoop压缩包解压目录的lib下所有jar包(别漏掉其中目录jsp-2.1中jar包),导入ant程序lib下所有jar包
+
+
