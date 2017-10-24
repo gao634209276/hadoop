@@ -1,5 +1,5 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
 	<modelVersion>4.0.0</modelVersion>
 
 	<groupId>study</groupId>
@@ -12,7 +12,8 @@
 
 	<properties>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-		<JAVA_HOME>C:\Program Files\Java\jdk1.7.0_80</JAVA_HOME>
+		<!--<JAVA_HOME>C:\Program Files\Java\jdk1.7.0_80</JAVA_HOME>-->
+		<JAVA_HOME>/usr/local/java/jdk1.7.0_80</JAVA_HOME>
 		<hadoop.version>2.7.2</hadoop.version>
 	</properties>
 
@@ -118,6 +119,11 @@
 			<groupId>org.apache.thrift</groupId>
 			<artifactId>libthrift</artifactId>
 			<version>0.9.3</version>
+		</dependency>
+		<dependency>
+			<groupId>junit</groupId>
+			<artifactId>junit</artifactId>
+			<version>4.12</version>
 		</dependency>
 
 

@@ -1,0 +1,2 @@
+hadoop分布式平台优化
+http://blog.csdn.net/zlfing/article/details/78072124
